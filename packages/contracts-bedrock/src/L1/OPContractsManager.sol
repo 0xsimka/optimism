@@ -146,9 +146,9 @@ contract OPContractsManager is ISemver {
 
     // -------- Constants and Variables --------
 
-    /// @custom:semver 1.6.0
+    /// @custom:semver 1.6.1
     function version() public pure virtual returns (string memory) {
-        return "1.6.0";
+        return "1.6.1";
     }
 
     /// @notice Address of the SuperchainConfig contract shared by all chains.
@@ -507,6 +507,11 @@ contract OPContractsManager is ISemver {
                 revert SuperchainConfigMismatch(_opChainConfigs[i].systemConfigProxy);
             }
 
+            // Grab the respected game type BEFORE upgrading the OptimismPortal or the function
+            // won't work because the new implementation tries to get it from the
+            // AnchorStateRegistry which doesn't have it yet.
+            GameType respectedGameType = IOptimismPortal2(payable(opChainAddrs.optimismPortal)).respectedGameType();
+
             // -------- Upgrade Contracts Stored in SystemConfig --------
             upgradeTo(
                 _opChainConfigs[i].proxyAdmin, address(_opChainConfigs[i].systemConfigProxy), impls.systemConfigImpl
@@ -563,9 +568,9 @@ contract OPContractsManager is ISemver {
                 // 2. getting the respected game type from the OptimismPortal.
                 // 3. getting the anchor root for the respected game type from the Anchor State Registry.
                 {
-                    GameType gameType = IOptimismPortal2(payable(opChainAddrs.optimismPortal)).respectedGameType();
-                    (Hash root, uint256 l2BlockNumber) =
-                        getAnchorStateRegistry(IFaultDisputeGame(address(permissionedDisputeGame))).anchors(gameType);
+                    (Hash root, uint256 l2BlockNumber) = getAnchorStateRegistry(
+                        IFaultDisputeGame(address(permissionedDisputeGame))
+                    ).anchors(respectedGameType);
                     OutputRoot memory startingAnchorRoot = OutputRoot({ root: root, l2BlockNumber: l2BlockNumber });
 
                     upgradeToAndCall(
@@ -577,8 +582,8 @@ contract OPContractsManager is ISemver {
                             (
                                 superchainConfig,
                                 IDisputeGameFactory(opChainAddrs.disputeGameFactory),
-                                IOptimismPortal2(payable(opChainAddrs.optimismPortal)),
-                                startingAnchorRoot
+                                startingAnchorRoot,
+                                respectedGameType
                             )
                         )
                     );
@@ -854,7 +859,7 @@ contract OPContractsManager is ISemver {
                 _output.disputeGameFactoryProxy,
                 _output.systemConfigProxy,
                 superchainConfig,
-                GameTypes.PERMISSIONED_CANNON
+                _output.anchorStateRegistryProxy
             )
         );
     }
@@ -936,7 +941,7 @@ contract OPContractsManager is ISemver {
         OutputRoot memory startingAnchorRoot = abi.decode(_input.startingAnchorRoot, (OutputRoot));
         return abi.encodeCall(
             IAnchorStateRegistry.initialize,
-            (superchainConfig, _output.disputeGameFactoryProxy, _output.optimismPortalProxy, startingAnchorRoot)
+            (superchainConfig, _output.disputeGameFactoryProxy, startingAnchorRoot, GameTypes.PERMISSIONED_CANNON)
         );
     }
 
