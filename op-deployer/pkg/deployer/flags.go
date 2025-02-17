@@ -23,7 +23,7 @@ const (
 	EtherscanAPIKeyFlagName  = "etherscan-api-key"
 	ContractBundleFlagName   = "contract-bundle"
 	ContractNameFlagName     = "contract-name"
-	L2ChainIndexFlagName     = "l2-chain-index"
+	L2ChainIDFlagName        = "l2-chain-id"
 )
 
 type DeploymentTarget string
@@ -70,6 +70,11 @@ var (
 		Usage:   "Comma-separated list of L2 chain IDs to deploy.",
 		EnvVars: PrefixEnvVar("L2_CHAIN_IDS"),
 	}
+	L2ChainIDFlag = &cli.StringFlag{
+		Name:    L2ChainIDFlagName,
+		Usage:   "Single L2 chain ID",
+		EnvVars: PrefixEnvVar("L2_CHAIN_ID"),
+	}
 	WorkdirFlag = &cli.StringFlag{
 		Name:    WorkdirFlagName,
 		Usage:   "Directory storing intent and stage. Defaults to the current directory.",
@@ -109,19 +114,13 @@ var (
 	}
 	ContractBundleFlag = &cli.StringFlag{
 		Name:    ContractBundleFlagName,
-		Usage:   "contract bundle/grouping to verify (superchain, opchain, or implementations)",
+		Usage:   "contract bundle/grouping (superchain|implementations|opchain)",
 		EnvVars: PrefixEnvVar("CONTRACT_BUNDLE"),
 	}
 	ContractNameFlag = &cli.StringFlag{
 		Name:    ContractNameFlagName,
-		Usage:   "contract name (mathcing a field within state.json) to verify",
+		Usage:   "contract name (matching a field within state.json)",
 		EnvVars: PrefixEnvVar("CONTRACT_NAME"),
-	}
-	L2ChainIndexFlag = &cli.IntFlag{
-		Name:    "l2-chain-index",
-		Usage:   "index of the L2 chain within the state.AppliedIntent.Chains array",
-		EnvVars: PrefixEnvVar("L2_CHAIN_INDEX"),
-		Value:   0,
 	}
 )
 
@@ -153,7 +152,7 @@ var VerifyFlags = []cli.Flag{
 	EtherscanAPIKeyFlag,
 	ContractBundleFlag,
 	ContractNameFlag,
-	L2ChainIndexFlag,
+	L2ChainIDFlag,
 }
 
 func PrefixEnvVar(name string) []string {
