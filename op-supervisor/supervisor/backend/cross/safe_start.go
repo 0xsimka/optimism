@@ -23,7 +23,15 @@ type SafeStartDeps interface {
 func CrossSafeHazards(d SafeStartDeps, chainID eth.ChainID, inL1Source eth.BlockID,
 	candidate types.BlockSeal, execMsgs []*types.ExecutingMessage) (hazards map[types.ChainIndex]types.BlockSeal, err error) {
 
-	hazards = make(map[types.ChainIndex]types.BlockSeal)
+	// Create a HazardSet for tracking dependencies
+	safeDeps := &safeDeps{
+		SafeStartDeps: d,
+		l1Source:      inL1Source,
+	}
+	hs, err := NewHazardSet(safeDeps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hazard set: %w", err)
+	}
 
 	// Warning for future: If we have sub-second distinct blocks (different block number),
 	// we need to increase precision on the above timestamp invariant.
@@ -56,19 +64,23 @@ func CrossSafeHazards(d SafeStartDeps, chainID eth.ChainID, inL1Source eth.Block
 		} else if !ok {
 			return nil, fmt.Errorf("cannot allow initiating message %s (chain %s): %w", msg, chainID, types.ErrConflict)
 		}
+
+		// Find the block containing this message
+		includedIn, err := d.Contains(initChainID,
+			types.ContainsQuery{
+				Timestamp: msg.Timestamp,
+				BlockNum:  msg.BlockNum,
+				LogIdx:    msg.LogIdx,
+				LogHash:   msg.Hash,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("executing msg %s failed check: %w", msg, err)
+		}
+
+		// Verify timestamp invariants
 		if msg.Timestamp < candidate.Timestamp {
 			// If timestamp is older: invariant ensures non-cyclic ordering relative to other messages.
 			// Check that the block that they are included in is cross-safe already.
-			includedIn, err := d.Contains(initChainID,
-				types.ContainsQuery{
-					Timestamp: msg.Timestamp,
-					BlockNum:  msg.BlockNum,
-					LogIdx:    msg.LogIdx,
-					LogHash:   msg.Hash,
-				})
-			if err != nil {
-				return nil, fmt.Errorf("executing msg %s failed check: %w", msg, err)
-			}
 			initSource, err := d.CrossDerivedToSource(initChainID, includedIn.ID())
 			if err != nil {
 				return nil, fmt.Errorf("msg %s included in non-cross-safe block %s: %w", msg, includedIn, err)
@@ -84,25 +96,10 @@ func CrossSafeHazards(d SafeStartDeps, chainID eth.ChainID, inL1Source eth.Block
 			// Thus check that it was included in a local-safe block,
 			// and then proceed with transitive block checks,
 			// to ensure the local block we depend on is becoming cross-safe also.
-			includedIn, err := d.Contains(initChainID,
-				types.ContainsQuery{
-					Timestamp: msg.Timestamp,
-					BlockNum:  msg.BlockNum,
-					LogIdx:    msg.LogIdx,
-					LogHash:   msg.Hash,
-				})
-			if err != nil {
-				return nil, fmt.Errorf("executing msg %s failed check: %w", msg, err)
-			}
-			// As a hazard block, it will be checked to be included in a cross-safe block,
-			// or right after a cross-safe block in a local-safe block, in HazardSafeFrontierChecks.
-			if existing, ok := hazards[msg.Chain]; ok {
-				if existing != includedIn {
-					return nil, fmt.Errorf("found dependency on %s (chain %d), but already depend on %s", includedIn, initChainID, chainID)
-				}
-			} else {
-				// Mark it as hazard block
-				hazards[msg.Chain] = includedIn
+
+			// Add to hazard set for tracking
+			if err := hs.Add(initChainID, includedIn, nil); err != nil {
+				return nil, fmt.Errorf("failed to track hazard: %w", err)
 			}
 		} else {
 			// Timestamp invariant is broken: executing message tries to execute future block.
@@ -110,5 +107,31 @@ func CrossSafeHazards(d SafeStartDeps, chainID eth.ChainID, inL1Source eth.Block
 			return nil, fmt.Errorf("executing message %s in %s breaks timestamp invariant", msg, candidate)
 		}
 	}
-	return hazards, nil
+
+	return hs.Dependencies(), nil
+}
+
+// safeDeps adapts SafeStartDeps to HazardDeps
+type safeDeps struct {
+	SafeStartDeps
+	l1Source eth.BlockID
+}
+
+// VerifyBlock implements HazardDeps by checking cross-safe derivation
+func (d *safeDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) error {
+	// For safe hazards, verify that the block is derived from a source within scope
+	source, err := d.CrossDerivedToSource(chainID, block)
+	if err != nil {
+		return fmt.Errorf("block %s not cross-safe: %w", block, err)
+	}
+	if source.Number > d.l1Source.Number {
+		return fmt.Errorf("block %s derived from %s which is not in cross-safe scope %s: %w",
+			block, source, d.l1Source, types.ErrOutOfScope)
+	}
+	return nil
+}
+
+// ChainIndexFromID implements HazardDeps by using the dependency set
+func (d *safeDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error) {
+	return d.DependencySet().ChainIndexFromID(id)
 }
