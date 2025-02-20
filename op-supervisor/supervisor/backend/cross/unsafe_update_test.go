@@ -152,17 +152,25 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
 		chainID := eth.ChainIDFromUInt64(0)
 		usd := &mockCrossUnsafeDeps{}
-		crossUnsafe := types.BlockSeal{Hash: common.Hash{0x01}}
+
+		chainIdx, err := usd.deps.ChainIndexFromID(chainID)
+		require.NoError(t, err)
+
+		crossUnsafe := types.BlockSeal{Hash: common.Hash{0x01}, Timestamp: 1}
 		usd.crossUnsafeFn = func(chainID eth.ChainID) (types.BlockSeal, error) {
 			return crossUnsafe, nil
 		}
 		bl := eth.BlockRef{ParentHash: common.Hash{0x01}, Time: 1}
-		em1 := &types.ExecutingMessage{Timestamp: 1}
+		em1 := &types.ExecutingMessage{Chain: chainIdx, BlockNum: 1, Timestamp: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			// include one executing message to ensure one hazard is returned
 			return bl, 2, map[uint32]*types.ExecutingMessage{1: em1}, nil
 		}
 		usd.deps = mockDependencySet{}
+		// Add Contains implementation to return a block with proper timestamp
+		usd.checkFn = func(chainID eth.ChainID, blockNum uint64, timestamp uint64, logIdx uint32, logHash common.Hash) (types.BlockSeal, error) {
+			return types.BlockSeal{Number: blockNum, Timestamp: timestamp}, nil
+		}
 		var updatingChainID eth.ChainID
 		var updatingBlock types.BlockSeal
 		usd.updateCrossUnsafeFn = func(chain eth.ChainID, crossUnsafe types.BlockSeal) error {
@@ -172,7 +180,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		}
 		// when there are no errors, the cross-unsafe block is updated
 		// the updated block is the block opened in OpenBlock
-		err := CrossUnsafeUpdate(logger, chainID, usd)
+		err = CrossUnsafeUpdate(logger, chainID, usd)
 		require.NoError(t, err)
 		require.Equal(t, chainID, updatingChainID)
 		require.Equal(t, types.BlockSealFromRef(bl), updatingBlock)

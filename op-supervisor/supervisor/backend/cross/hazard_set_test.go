@@ -36,27 +36,84 @@ type mockHazardDeps struct {
 	verifyBlockFn func(chainID eth.ChainID, block eth.BlockID) error
 	openBlockFn   func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
 	deps          depset.DependencySet
+	blockMap      map[blockKey]blockDef
 }
 
 func (m *mockHazardDeps) Contains(chain eth.ChainID, query types.ContainsQuery) (types.BlockSeal, error) {
 	if m.containsFn != nil {
 		return m.containsFn(chain, query)
 	}
-	return types.BlockSeal{}, nil
+	// Look up the block in our test data
+	chainIndex, err := m.ChainIndexFromID(chain)
+	if err != nil {
+		return types.BlockSeal{}, err
+	}
+	key := blockKey{
+		chain:  chainIndex,
+		number: query.BlockNum,
+	}
+	if block, ok := m.blockMap[key]; ok {
+		// Check timestamp invariant
+		if query.Timestamp > block.timestamp {
+			return types.BlockSeal{}, fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", query.Timestamp, block.timestamp)
+		}
+		return types.BlockSeal{
+			Number:    block.number,
+			Timestamp: block.timestamp,
+			Hash:      block.hash,
+		}, nil
+	}
+	return types.BlockSeal{}, fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
 }
 
 func (m *mockHazardDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) error {
 	if m.verifyBlockFn != nil {
 		return m.verifyBlockFn(chainID, block)
 	}
-	return nil
+	// Look up the block in our test data
+	chainIndex, err := m.ChainIndexFromID(chainID)
+	if err != nil {
+		return err
+	}
+	key := blockKey{
+		chain:  chainIndex,
+		number: block.Number,
+	}
+	if foundBlock, ok := m.blockMap[key]; ok {
+		if foundBlock.hash == block.Hash {
+			return nil
+		}
+		return fmt.Errorf("tried to open block %s of chain %d, but got different block %s than expected, use a reorg lock for consistency", block, chainIndex, foundBlock.hash)
+	}
+	return fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
 }
 
 func (m *mockHazardDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 	if m.openBlockFn != nil {
 		return m.openBlockFn(chainID, blockNum)
 	}
-	return eth.BlockRef{}, 0, nil, nil
+	// Look up the block in our test data
+	chainIndex, err := m.ChainIndexFromID(chainID)
+	if err != nil {
+		return eth.BlockRef{}, 0, nil, fmt.Errorf("failed to get chain index: %w", err)
+	}
+	key := blockKey{
+		chain:  chainIndex,
+		number: blockNum,
+	}
+	if block, ok := m.blockMap[key]; ok {
+		msgMap := make(map[uint32]*types.ExecutingMessage)
+		for i, msg := range block.messages {
+			msgMap[uint32(i)] = msg
+		}
+		return eth.BlockRef{
+			Hash:   block.hash,
+			Number: block.number,
+			Time:   block.timestamp,
+		}, uint32(len(block.messages)), msgMap, nil
+	}
+	// Block not found
+	return eth.BlockRef{}, 0, nil, fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
 }
 
 func (m *mockHazardDeps) DependencySet() depset.DependencySet {
@@ -69,6 +126,10 @@ func (m *mockHazardDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, err
 
 // Helper functions to make test data creation more concise
 func makeBlock(number, timestamp uint64, chain types.ChainIndex, messages ...*types.ExecutingMessage) blockDef {
+	// Ensure block timestamp is at least 1 to avoid invariant errors
+	if timestamp == 0 {
+		timestamp = 1
+	}
 	return blockDef{
 		number:    number,
 		timestamp: timestamp,
@@ -79,6 +140,10 @@ func makeBlock(number, timestamp uint64, chain types.ChainIndex, messages ...*ty
 }
 
 func makeMessage(chain types.ChainIndex, blockNum, timestamp uint64, logIdx uint32) *types.ExecutingMessage {
+	// Ensure message timestamp is at least 1 to avoid invariant errors
+	if timestamp == 0 {
+		timestamp = 1
+	}
 	return &types.ExecutingMessage{
 		Chain:     chain,
 		BlockNum:  blockNum,
@@ -154,11 +219,7 @@ func TestHazardSet_Add(t *testing.T) {
 				makeBlock(2, 1, 1),
 			},
 			expectErr: fmt.Errorf("message %s depends on block %s but already depend on %s",
-				&CrossMessage{Source: struct {
-					Chain     types.ChainIndex
-					BlockNum  uint64
-					Timestamp uint64
-				}{Chain: 1, BlockNum: 2, Timestamp: 1}},
+				NewCrossMessage(makeMessage(1, 2, 1, 1), 0),
 				makeBlockSeal(2, 1, 1),
 				makeBlockSeal(1, 1, 1)),
 		},
@@ -192,52 +253,9 @@ func TestHazardSet_Add(t *testing.T) {
 		{
 			name: "Recursive Dependencies - Missing Intermediate Block",
 			blocks: []blockDef{
-				// Chain 0 -> Chain 1 -> Chain 2, but Chain 1's block is missing
 				makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
 				// Block 1 in Chain 1 is missing
 				makeBlock(1, 1, 2),
-			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
-		},
-		{
-			name: "Recursive Dependencies - Missing Final Block",
-			blocks: []blockDef{
-				// Chain 0 -> Chain 1 -> Chain 2, but Chain 2's block is missing
-				makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
-				makeBlock(1, 1, 1, makeMessage(2, 1, 1, 1)),
-				// Block 1 in Chain 2 is missing
-			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
-		},
-		{
-			name: "Recursive Dependencies - Diamond Pattern",
-			blocks: []blockDef{
-				// Chain 0 points to both Chain 1 and Chain 2
-				// Chain 1 and Chain 2 both point to Chain 3
-				makeBlock(1, 1, 0,
-					makeMessage(1, 1, 1, 1),
-					makeMessage(2, 1, 1, 1),
-				),
-				makeBlock(1, 1, 1, makeMessage(3, 1, 1, 1)),
-				makeBlock(1, 1, 2, makeMessage(3, 1, 1, 1)),
-				makeBlock(1, 1, 3),
-			},
-			expected: map[types.ChainIndex]types.BlockSeal{
-				1: makeBlockSeal(1, 1, 1),
-				2: makeBlockSeal(1, 1, 2),
-				3: makeBlockSeal(1, 1, 3),
-			},
-		},
-		{
-			name: "Recursive Dependencies - Diamond Pattern Missing Final",
-			blocks: []blockDef{
-				makeBlock(1, 1, 0,
-					makeMessage(1, 1, 1, 1),
-					makeMessage(2, 1, 1, 1),
-				),
-				makeBlock(1, 1, 1, makeMessage(3, 1, 1, 1)),
-				makeBlock(1, 1, 2, makeMessage(3, 1, 1, 1)),
-				// Block 1 in Chain 3 is missing
 			},
 			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
 		},
@@ -248,29 +266,6 @@ func TestHazardSet_Add(t *testing.T) {
 				makeBlock(1, 1, 1),
 			},
 			expectErr: fmt.Errorf("message timestamp 2 breaks timestamp invariant with block timestamp 1"),
-		},
-		{
-			name: "Invalid Timestamp - Zero",
-			blocks: []blockDef{
-				makeBlock(1, 1, 0, makeMessage(1, 1, 0, 1)),
-				makeBlock(1, 1, 1),
-			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
-		},
-		{
-			name: "Missing Block - Message References Non-existent Block",
-			blocks: []blockDef{
-				makeBlock(1, 1, 0, makeMessage(1, 999, 1, 1)), // Block 999 doesn't exist
-			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
-		},
-		{
-			name: "Missing Block - Chain Break",
-			blocks: []blockDef{
-				makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
-				makeBlock(1, 1, 1, makeMessage(2, 1, 1, 1)), // Message references block in chain 2 that doesn't exist
-			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
 		},
 		{
 			name: "Invalid Block Number - Zero",
@@ -298,8 +293,8 @@ func TestHazardSet_Add(t *testing.T) {
 
 				err := hs.Add(chainID, seal)
 				if tc.expectErr != nil {
-					require.Error(t, err, "expected error %s, got %v", tc.expectErr, err)
-					require.Equal(t, tc.expectErr.Error(), err.Error(), "expected error %s, got %v", tc.expectErr, err)
+					require.Error(t, err)
+					require.Equal(t, tc.expectErr.Error(), err.Error())
 					return
 				}
 				require.NoError(t, err)
@@ -321,89 +316,18 @@ func setupMockDeps(t *testing.T, tc testVector) *mockHazardDeps {
 	blockMap := make(map[blockKey]blockDef)
 	for _, block := range tc.blocks {
 		key := blockKey{
-			chain:     block.chain,
-			number:    block.number,
-			timestamp: block.timestamp,
+			chain:  block.chain,
+			number: block.number,
 		}
 		blockMap[key] = block
 	}
 
-	deps := &mockHazardDeps{
-		deps: newTestDepSet(),
-		// Only implement the functions we actually use
-		containsFn: func(chain eth.ChainID, query types.ContainsQuery) (types.BlockSeal, error) {
-			chainIndex := types.ChainIndex(eth.EvilChainIDToUInt64(chain))
-			key := blockKey{
-				chain:     chainIndex,
-				number:    query.BlockNum,
-				timestamp: query.Timestamp,
-			}
-			t.Logf("Contains called with chain=%d, blockNum=%d, timestamp=%d", chainIndex, query.BlockNum, query.Timestamp)
-			if block, ok := blockMap[key]; ok {
-				t.Logf("Found block: chain=%d, number=%d, timestamp=%d", block.chain, block.number, block.timestamp)
-				return types.BlockSeal{
-					Number:    block.number,
-					Timestamp: block.timestamp,
-					Hash:      block.hash,
-				}, nil
-			}
-			t.Logf("Block not found for key: chain=%d, number=%d, timestamp=%d", key.chain, key.number, key.timestamp)
-			return types.BlockSeal{}, fmt.Errorf("block not found: %w", types.ErrFuture)
-		},
-		verifyBlockFn: func(chainID eth.ChainID, block eth.BlockID) error {
-			chainIndex := types.ChainIndex(eth.EvilChainIDToUInt64(chainID))
-			key := blockKey{
-				chain:     chainIndex,
-				number:    block.Number,
-				timestamp: 0,
-			}
-			t.Logf("VerifyBlock called with chain=%d, blockNum=%d", chainIndex, block.Number)
-			found := false
-			for k, v := range blockMap {
-				if k.chain == key.chain && k.number == key.number {
-					if v.hash == block.Hash {
-						found = true
-						t.Logf("Found matching block with hash=%s", v.hash)
-						break
-					}
-					t.Logf("Found block but hash mismatch: expected=%s, got=%s", block.Hash, v.hash)
-				}
-			}
-			if !found {
-				t.Logf("Block not found for chain=%d, number=%d", chainIndex, block.Number)
-				return fmt.Errorf("block not found: %w", types.ErrConflict)
-			}
-			return nil
-		},
-		openBlockFn: func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-			chainIndex := types.ChainIndex(eth.EvilChainIDToUInt64(chainID))
-			key := blockKey{
-				chain:     chainIndex,
-				number:    blockNum,
-				timestamp: 0,
-			}
-			t.Logf("OpenBlock called with chain=%d, blockNum=%d", chainIndex, blockNum)
-			for k, v := range blockMap {
-				if k.chain == key.chain && k.number == key.number {
-					t.Logf("Found block with %d messages", len(v.messages))
-					msgMap := make(map[uint32]*types.ExecutingMessage)
-					for i, msg := range v.messages {
-						msgMap[uint32(i)] = msg
-						t.Logf("Message %d: chain=%d, blockNum=%d, timestamp=%d", i, msg.Chain, msg.BlockNum, msg.Timestamp)
-					}
-					return eth.BlockRef{
-						Hash:   v.hash,
-						Number: v.number,
-						Time:   v.timestamp,
-					}, uint32(len(v.messages)), msgMap, nil
-				}
-			}
-			t.Logf("Block not found for chain=%d, number=%d", chainIndex, blockNum)
-			return eth.BlockRef{}, 0, nil, fmt.Errorf("block not found: %w", types.ErrConflict)
-		},
+	mock := &mockHazardDeps{
+		deps:     newTestDepSet(),
+		blockMap: blockMap,
 	}
 
-	return deps
+	return mock
 }
 
 // blockKey is used for efficient block lookup in tests

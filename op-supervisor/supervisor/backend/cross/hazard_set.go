@@ -162,11 +162,6 @@ func (h *HazardSet) Add(chainID eth.ChainID, block types.BlockSeal) error {
 			return fmt.Errorf("cannot initiate at chain %s: %w", srcChainID, types.ErrConflict)
 		}
 
-		// Check the timestamp invariant
-		if msg.Timestamp > block.Timestamp {
-			return fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", msg.Timestamp, block.Timestamp)
-		}
-
 		// Check if the message exists in a block
 		query := types.ContainsQuery{
 			BlockNum:  msg.BlockNum,
@@ -177,6 +172,11 @@ func (h *HazardSet) Add(chainID eth.ChainID, block types.BlockSeal) error {
 		includedIn, err := h.deps.Contains(srcChainID, query)
 		if err != nil {
 			return fmt.Errorf("failed to check if message exists: %w", err)
+		}
+
+		// Check timestamp invariant
+		if msg.Timestamp > includedIn.Timestamp {
+			return fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", msg.Timestamp, includedIn.Timestamp)
 		}
 
 		// If we already have a hazard for this chain, make sure it's the same one

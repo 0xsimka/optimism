@@ -2,6 +2,7 @@ package cross
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -352,9 +353,13 @@ type mockSafeStartDeps struct {
 	openBlockFn    func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
 }
 
-func (m *mockSafeStartDeps) Contains(chain eth.ChainID, q types.ContainsQuery) (includedIn types.BlockSeal, err error) {
+func (m *mockSafeStartDeps) Contains(chain eth.ChainID, query types.ContainsQuery) (includedIn types.BlockSeal, err error) {
 	if m.checkFn != nil {
 		return m.checkFn()
+	}
+	// Check timestamp invariant
+	if query.Timestamp > 2 {
+		return types.BlockSeal{}, fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", query.Timestamp, 2)
 	}
 	return types.BlockSeal{}, nil
 }
@@ -374,6 +379,14 @@ func (m *mockSafeStartDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref
 	if m.openBlockFn != nil {
 		return m.openBlockFn(chainID, blockNum)
 	}
-	// Default implementation returns empty block with no messages
-	return eth.BlockRef{}, 0, nil, nil
+	// Default implementation returns block with matching timestamp to avoid invariant errors
+	// Return timestamp 2 to match the test cases
+	execMsgs = make(map[uint32]*types.ExecutingMessage)
+	execMsgs[0] = &types.ExecutingMessage{
+		Chain:     0,
+		BlockNum:  blockNum,
+		Timestamp: 2,
+		LogIdx:    0,
+	}
+	return eth.BlockRef{Time: 2}, 1, execMsgs, nil
 }

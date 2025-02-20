@@ -78,6 +78,13 @@ func (d *unsafeDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.Bl
 		return eth.BlockRef{}, 0, nil, fmt.Errorf("block %s not cross-unsafe: %w", block, err)
 	}
 
+	// Check timestamp invariants for all messages
+	for _, msg := range execMsgs {
+		if msg.Timestamp > ref.Time {
+			return eth.BlockRef{}, 0, nil, fmt.Errorf("executing message %s in %s breaks timestamp invariant", msg, ref)
+		}
+	}
+
 	// If we get here, the block is verified to be cross-unsafe
 	// Return the messages but don't add to hazard set
 	return ref, logCount, execMsgs, nil
