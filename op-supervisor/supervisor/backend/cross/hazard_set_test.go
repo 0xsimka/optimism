@@ -34,6 +34,7 @@ func newTestDepSet() depset.DependencySet {
 type mockHazardDeps struct {
 	containsFn    func(chain eth.ChainID, query types.ContainsQuery) (types.BlockSeal, error)
 	verifyBlockFn func(chainID eth.ChainID, block eth.BlockID) error
+	openBlockFn   func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
 	deps          depset.DependencySet
 }
 
@@ -49,6 +50,13 @@ func (m *mockHazardDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) err
 		return m.verifyBlockFn(chainID, block)
 	}
 	return nil
+}
+
+func (m *mockHazardDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+	if m.openBlockFn != nil {
+		return m.openBlockFn(chainID, blockNum)
+	}
+	return eth.BlockRef{}, 0, nil, nil
 }
 
 func (m *mockHazardDeps) DependencySet() depset.DependencySet {
@@ -169,6 +177,18 @@ func TestHazardSet_Add(t *testing.T) {
 				2: makeBlockSeal(1, 1, 2),
 			},
 		},
+		{
+			name: "Recursive Dependencies",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
+				makeBlock(1, 1, 1, makeMessage(2, 1, 1, 1)),
+				makeBlock(1, 1, 2),
+			},
+			expected: map[types.ChainIndex]types.BlockSeal{
+				1: makeBlockSeal(1, 1, 1),
+				2: makeBlockSeal(1, 1, 2),
+			},
+		},
 	}
 
 	for _, tc := range vectors {
@@ -177,7 +197,7 @@ func TestHazardSet_Add(t *testing.T) {
 			hs, err := NewHazardSet(deps)
 			require.NoError(t, err)
 
-			// Add each block and its messages
+			// Add each block
 			for i, block := range tc.blocks {
 				seal := types.BlockSeal{
 					Number:    block.number,
@@ -186,7 +206,7 @@ func TestHazardSet_Add(t *testing.T) {
 				}
 				chainID := eth.ChainIDFromUInt64(uint64(block.chain))
 
-				err := hs.Add(chainID, seal, block.messages)
+				err := hs.Add(chainID, seal)
 				if tc.expectErr != nil {
 					require.Error(t, err)
 					require.Equal(t, tc.expectErr.Error(), err.Error())
@@ -208,18 +228,14 @@ func setupMockDeps(t *testing.T, tc testVector) *mockHazardDeps {
 	t.Helper()
 
 	// Create a map of all blocks for quick lookup
-	blockMap := make(map[blockKey]types.BlockSeal)
+	blockMap := make(map[blockKey]blockDef)
 	for _, block := range tc.blocks {
 		key := blockKey{
 			chain:     block.chain,
 			number:    block.number,
 			timestamp: block.timestamp,
 		}
-		blockMap[key] = types.BlockSeal{
-			Number:    block.number,
-			Timestamp: block.timestamp,
-			Hash:      block.hash,
-		}
+		blockMap[key] = block
 	}
 
 	deps := &mockHazardDeps{
@@ -232,8 +248,12 @@ func setupMockDeps(t *testing.T, tc testVector) *mockHazardDeps {
 				number:    query.BlockNum,
 				timestamp: query.Timestamp,
 			}
-			if seal, ok := blockMap[key]; ok {
-				return seal, nil
+			if block, ok := blockMap[key]; ok {
+				return types.BlockSeal{
+					Number:    block.number,
+					Timestamp: block.timestamp,
+					Hash:      block.hash,
+				}, nil
 			}
 			return types.BlockSeal{}, fmt.Errorf("block not found: %w", types.ErrFuture)
 		},
@@ -245,11 +265,34 @@ func setupMockDeps(t *testing.T, tc testVector) *mockHazardDeps {
 				timestamp: 0, // We don't have timestamp in BlockID
 			}
 			for k, v := range blockMap {
-				if k.chain == key.chain && k.number == key.number && v.Hash == block.Hash {
+				if k.chain == key.chain && k.number == key.number && v.hash == block.Hash {
 					return nil
 				}
 			}
 			return fmt.Errorf("block not found: %w", types.ErrConflict)
+		},
+		openBlockFn: func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			chainIndex := types.ChainIndex(eth.EvilChainIDToUInt64(chainID))
+			key := blockKey{
+				chain:     chainIndex,
+				number:    blockNum,
+				timestamp: 0, // We don't have timestamp in BlockID
+			}
+			for k, v := range blockMap {
+				if k.chain == key.chain && k.number == key.number {
+					// Convert messages slice to map
+					msgMap := make(map[uint32]*types.ExecutingMessage)
+					for i, msg := range v.messages {
+						msgMap[uint32(i)] = msg
+					}
+					return eth.BlockRef{
+						Hash:   v.hash,
+						Number: v.number,
+						Time:   v.timestamp,
+					}, uint32(len(v.messages)), msgMap, nil
+				}
+			}
+			return eth.BlockRef{}, 0, nil, fmt.Errorf("block not found: %w", types.ErrConflict)
 		},
 	}
 

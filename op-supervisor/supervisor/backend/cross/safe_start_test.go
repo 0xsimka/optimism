@@ -17,10 +17,9 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{}
 		// when there are no execMsgs,
 		// no work is done, and no error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.NoError(t, err)
 		require.Empty(t, hazards)
 	})
@@ -34,10 +33,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and CanExecuteAt returns false,
 		// no work is done and an error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorIs(t, err, types.ErrConflict)
 		require.Empty(t, hazards)
 	})
@@ -51,10 +52,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and CanExecuteAt returns false,
 		// no work is done and an error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -68,10 +71,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and ChainIDFromIndex returns ErrUnknownChain,
 		// an error is returned as a ErrConflict
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorIs(t, err, types.ErrConflict)
 		require.Empty(t, hazards)
 	})
@@ -85,10 +90,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and ChainIDFromIndex returns some other error,
 		// the error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -102,10 +109,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and CanInitiateAt returns false,
 		// the error is returned as a ErrConflict
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorIs(t, err, types.ErrConflict)
 		require.Empty(t, hazards)
 	})
@@ -119,10 +128,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{}
-		execMsgs := []*types.ExecutingMessage{{}}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
+		}
 		// when there is one execMsg, and CanInitiateAt returns an error,
 		// the error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -133,10 +144,12 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 10}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is greater than the candidate,
 		// an error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "breaks timestamp invariant")
 		require.Empty(t, hazards)
 	})
@@ -150,11 +163,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timetamp is equal to the candidate,
 		// and check returns an error,
 		// that error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -170,11 +185,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
-		execMsgs := []*types.ExecutingMessage{em1, em2}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
+		}
 		// when there are two execMsgs, and both are equal time to the candidate,
 		// and check returns the same includedIn for both
 		// they load the hazards once, and return no error
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.NoError(t, err)
 		require.Equal(t, hazards, map[types.ChainIndex]types.BlockSeal{types.ChainIndex(0): sampleBlockSeal})
 	})
@@ -197,11 +214,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
-		execMsgs := []*types.ExecutingMessage{em1, em2}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
+		}
 		// when there are two execMsgs, and both are equal time to the candidate,
 		// and check returns different includedIn for the two,
 		// an error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "but already depend on")
 		require.Empty(t, hazards)
 	})
@@ -215,11 +234,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and check returns an error,
 		// that error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -237,11 +258,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns aan error,
 		// that error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorContains(t, err, "some error")
 		require.Empty(t, hazards)
 	})
@@ -260,11 +283,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns a BlockSeal with a greater Number than the inL1Source,
 		// an error is returned as a ErrOutOfScope
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.ErrorIs(t, err, types.ErrOutOfScope)
 		require.Empty(t, hazards)
 	})
@@ -283,11 +308,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{Number: 10}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns a BlockSeal with a smaller Number than the inL1Source,
 		// no error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.NoError(t, err)
 		require.Empty(t, hazards)
 	})
@@ -306,11 +333,13 @@ func TestCrossSafeHazards(t *testing.T) {
 		inL1Source := eth.BlockID{Number: 1}
 		candidate := types.BlockSeal{Timestamp: 2}
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
-		execMsgs := []*types.ExecutingMessage{em1}
+		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns a BlockSeal with a equal to the Number of inL1Source,
 		// no error is returned
-		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate, execMsgs)
+		hazards, err := CrossSafeHazards(ssd, chainID, inL1Source, candidate)
 		require.NoError(t, err)
 		require.Empty(t, hazards)
 	})
@@ -320,6 +349,7 @@ type mockSafeStartDeps struct {
 	deps           mockDependencySet
 	checkFn        func() (includedIn types.BlockSeal, err error)
 	derivedToSrcFn func() (source types.BlockSeal, err error)
+	openBlockFn    func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
 }
 
 func (m *mockSafeStartDeps) Contains(chain eth.ChainID, q types.ContainsQuery) (includedIn types.BlockSeal, err error) {
@@ -338,4 +368,12 @@ func (m *mockSafeStartDeps) CrossDerivedToSource(chainID eth.ChainID, derived et
 
 func (m *mockSafeStartDeps) DependencySet() depset.DependencySet {
 	return m.deps
+}
+
+func (m *mockSafeStartDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
+	if m.openBlockFn != nil {
+		return m.openBlockFn(chainID, blockNum)
+	}
+	// Default implementation returns empty block with no messages
+	return eth.BlockRef{}, 0, nil, nil
 }

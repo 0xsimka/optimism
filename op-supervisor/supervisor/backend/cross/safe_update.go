@@ -92,14 +92,14 @@ func scopedCrossSafeUpdate(logger log.Logger, chainID eth.ChainID, d CrossSafeDe
 		return candidate, fmt.Errorf("failed to determine candidate block for cross-safe: %w", err)
 	}
 	logger.Debug("Candidate cross-safe", "scope", candidate.Source, "candidate", candidate.Derived)
-	opened, _, execMsgs, err := d.OpenBlock(chainID, candidate.Derived.Number)
+	opened, _, _, err := d.OpenBlock(chainID, candidate.Derived.Number)
 	if err != nil {
 		return candidate, fmt.Errorf("failed to open block %s: %w", candidate.Derived, err)
 	}
 	if opened.ID() != candidate.Derived.ID() {
 		return candidate, fmt.Errorf("unsafe L2 DB has %s, but candidate cross-safe was %s: %w", opened, candidate.Derived, types.ErrConflict)
 	}
-	hazards, err := CrossSafeHazards(d, chainID, candidate.Source.ID(), types.BlockSealFromRef(opened), sliceOfExecMsgs(execMsgs))
+	hazards, err := CrossSafeHazards(d, chainID, candidate.Source.ID(), types.BlockSealFromRef(opened))
 	if err != nil {
 		return candidate, fmt.Errorf("failed to determine dependencies of cross-safe candidate %s: %w", candidate.Derived, err)
 	}
