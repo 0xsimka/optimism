@@ -149,7 +149,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 	t.Run("timestamp is equal, Check returns error", func(t *testing.T) {
 		usd := &mockUnsafeStartDeps{}
 		usd.checkFn = func() (includedIn types.BlockSeal, err error) {
-			return types.BlockSeal{}, errors.New("some error")
+			return types.BlockSeal{}, fmt.Errorf("failed to open block BlockSeal(hash:0x0000000000000000000000000000000000000000000000000000000000000000, number:0, time:2): executing message ExecMsg(chainIndex: 0, block: 0, log: 0, time: 2, logHash: 0x0000000000000000000000000000000000000000000000000000000000000000) in 0x0000000000000000000000000000000000000000000000000000000000000000:0 breaks timestamp invariant")
 		}
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
@@ -162,7 +162,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		// and check returns an error,
 		// that error is returned
 		hazards, err := CrossUnsafeHazards(usd, chainID, candidate)
-		require.ErrorContains(t, err, "some error")
+		require.ErrorContains(t, err, "breaks timestamp invariant")
 		require.Empty(t, hazards)
 	})
 	t.Run("timestamp is equal, same hazard twice", func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 	t.Run("timestamp is less, check returns error", func(t *testing.T) {
 		usd := &mockUnsafeStartDeps{}
 		usd.checkFn = func() (includedIn types.BlockSeal, err error) {
-			return types.BlockSeal{}, errors.New("some error")
+			return types.BlockSeal{}, fmt.Errorf("failed to open block BlockSeal(hash:0x0000000000000000000000000000000000000000000000000000000000000000, number:0, time:2): executing message ExecMsg(chainIndex: 0, block: 0, log: 0, time: 1, logHash: 0x0000000000000000000000000000000000000000000000000000000000000000) in 0x0000000000000000000000000000000000000000000000000000000000000000:0 breaks timestamp invariant")
 		}
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
@@ -230,7 +230,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		// and check returns an error,
 		// that error is returned
 		hazards, err := CrossUnsafeHazards(usd, chainID, candidate)
-		require.ErrorContains(t, err, "some error")
+		require.ErrorContains(t, err, "breaks timestamp invariant")
 		require.Empty(t, hazards)
 	})
 	t.Run("timestamp is less, IsCrossUnsafe returns error", func(t *testing.T) {

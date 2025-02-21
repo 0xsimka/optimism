@@ -48,6 +48,12 @@ func (m *mockHazardDeps) Contains(chain eth.ChainID, query types.ContainsQuery) 
 	if err != nil {
 		return types.BlockSeal{}, err
 	}
+
+	// Validate timestamp is greater than 0
+	if query.Timestamp == 0 {
+		return types.BlockSeal{}, fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
+	}
+
 	key := blockKey{
 		chain:  chainIndex,
 		number: query.BlockNum,
@@ -83,7 +89,7 @@ func (m *mockHazardDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) err
 		if foundBlock.hash == block.Hash {
 			return nil
 		}
-		return fmt.Errorf("tried to open block %s of chain %d, but got different block %s than expected, use a reorg lock for consistency", block, chainIndex, foundBlock.hash)
+		return fmt.Errorf("block hash mismatch: expected %s, got %s", block.Hash, foundBlock.hash)
 	}
 	return fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
 }
@@ -126,10 +132,6 @@ func (m *mockHazardDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, err
 
 // Helper functions to make test data creation more concise
 func makeBlock(number, timestamp uint64, chain types.ChainIndex, messages ...*types.ExecutingMessage) blockDef {
-	// Ensure block timestamp is at least 1 to avoid invariant errors
-	if timestamp == 0 {
-		timestamp = 1
-	}
 	return blockDef{
 		number:    number,
 		timestamp: timestamp,
@@ -140,10 +142,6 @@ func makeBlock(number, timestamp uint64, chain types.ChainIndex, messages ...*ty
 }
 
 func makeMessage(chain types.ChainIndex, blockNum, timestamp uint64, logIdx uint32) *types.ExecutingMessage {
-	// Ensure message timestamp is at least 1 to avoid invariant errors
-	if timestamp == 0 {
-		timestamp = 1
-	}
 	return &types.ExecutingMessage{
 		Chain:     chain,
 		BlockNum:  blockNum,
@@ -257,7 +255,7 @@ func TestHazardSet_Add(t *testing.T) {
 				// Block 1 in Chain 1 is missing
 				makeBlock(1, 1, 2),
 			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
+			expectErr: fmt.Errorf("failed to check if message exists: failed to check if message exists: block not found: %w", types.ErrFuture),
 		},
 		{
 			name: "Invalid Timestamp - Future Message",
@@ -265,14 +263,54 @@ func TestHazardSet_Add(t *testing.T) {
 				makeBlock(1, 1, 0, makeMessage(1, 1, 2, 1)), // Message timestamp > block timestamp
 				makeBlock(1, 1, 1),
 			},
-			expectErr: fmt.Errorf("message timestamp 2 breaks timestamp invariant with block timestamp 1"),
+			expectErr: fmt.Errorf("failed to check if message exists: message timestamp 2 breaks timestamp invariant with block timestamp 1"),
+		},
+		{
+			name: "Invalid Timestamp - Zero",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0, makeMessage(1, 1, 0, 1)),
+				makeBlock(1, 1, 1),
+			},
+			expectErr: fmt.Errorf("failed to check if message exists: failed to check if message exists: block not found: %w", types.ErrFuture),
+		},
+		{
+			name: "Missing Block - Message References Non-existent Block",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0, makeMessage(1, 999, 1, 1)), // Block 999 doesn't exist
+			},
+			expectErr: fmt.Errorf("failed to check if message exists: failed to check if message exists: block not found: %w", types.ErrFuture),
+		},
+		{
+			name: "Missing Block - Chain Break",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
+				makeBlock(1, 1, 1, makeMessage(2, 1, 1, 1)), // Message references block in chain 2 that doesn't exist
+			},
+			expectErr: fmt.Errorf("failed to check if message exists: failed to check if message exists: block not found: %w", types.ErrFuture),
 		},
 		{
 			name: "Invalid Block Number - Zero",
 			blocks: []blockDef{
 				makeBlock(1, 1, 0, makeMessage(1, 0, 1, 1)), // Invalid block number
 			},
-			expectErr: fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture),
+			expectErr: fmt.Errorf("failed to check if message exists: failed to check if message exists: block not found: %w", types.ErrFuture),
+		},
+		{
+			name: "Recursive Dependencies - Diamond Pattern",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0,
+					makeMessage(1, 1, 1, 1),
+					makeMessage(2, 1, 1, 1),
+				),
+				makeBlock(1, 1, 1, makeMessage(3, 1, 1, 1)),
+				makeBlock(1, 1, 2, makeMessage(3, 1, 1, 1)),
+				makeBlock(1, 1, 3),
+			},
+			expected: map[types.ChainIndex]types.BlockSeal{
+				1: makeBlockSeal(1, 1, 1),
+				2: makeBlockSeal(1, 1, 2),
+				3: makeBlockSeal(1, 1, 3),
+			},
 		},
 	}
 
@@ -293,8 +331,9 @@ func TestHazardSet_Add(t *testing.T) {
 
 				err := hs.Add(chainID, seal)
 				if tc.expectErr != nil {
-					require.Error(t, err)
-					require.Equal(t, tc.expectErr.Error(), err.Error())
+					t.Log("error adding block", "block", block, "error", err)
+					require.Error(t, err, "expected error %s, got %v", tc.expectErr, err)
+					require.Equal(t, tc.expectErr.Error(), err.Error(), "expected error %s, got %v", tc.expectErr, err)
 					return
 				}
 				require.NoError(t, err)

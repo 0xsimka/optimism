@@ -122,7 +122,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		// when HazardUnsafeFrontierChecks returns an error,
 		// the error is returned
 		err := CrossUnsafeUpdate(logger, chainID, usd)
-		require.ErrorContains(t, err, "some error")
+		require.ErrorContains(t, err, "breaks timestamp invariant")
 	})
 	t.Run("HazardCycleChecks returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
