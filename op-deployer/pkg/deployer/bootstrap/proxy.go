@@ -32,6 +32,7 @@ type ProxyConfig struct {
 	PrivateKey       string
 	Logger           log.Logger
 	ArtifactsLocator *artifacts.Locator
+	CleanupAfterExit bool
 
 	privateKeyECDSA *ecdsa.PrivateKey
 
@@ -77,6 +78,8 @@ func ProxyCLI(cliCtx *cli.Context) error {
 	privateKey := cliCtx.String(deployer.PrivateKeyFlagName)
 	outfile := cliCtx.String(OutfileFlagName)
 	artifactsURLStr := cliCtx.String(ArtifactsLocatorFlagName)
+	cleanupAfterExit := cliCtx.Bool(deployer.CleanupAfterExitFlagName)
+
 	artifactsLocator := new(artifacts.Locator)
 	if err := artifactsLocator.UnmarshalText([]byte(artifactsURLStr)); err != nil {
 		return fmt.Errorf("failed to parse artifacts URL: %w", err)
@@ -92,6 +95,7 @@ func ProxyCLI(cliCtx *cli.Context) error {
 		Logger:           l,
 		ArtifactsLocator: artifactsLocator,
 		Owner:            owner,
+		CleanupAfterExit: cleanupAfterExit,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy Proxy: %w", err)
@@ -110,7 +114,14 @@ func Proxy(ctx context.Context, cfg ProxyConfig) (opcm.DeployProxyOutput, error)
 	}
 
 	lgr := cfg.Logger
-	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	artifactsFS, cleanupArtifacts, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	if cfg.CleanupAfterExit && cleanupArtifacts != nil {
+		defer func() {
+			if err := cleanupArtifacts(); err != nil {
+				lgr.Error("failed to cleanup artifacts", "error", err)
+			}
+		}()
+	}
 	if err != nil {
 		return dpo, fmt.Errorf("failed to download artifacts: %w", err)
 	}

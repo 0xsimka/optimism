@@ -18,6 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var cleanupAfterExit bool
+
+func init() {
+	cleanupAfterExit = testutil.ShouldCleanupAfterExit()
+}
+
 func TestImplementations(t *testing.T) {
 	for _, network := range networks {
 		t.Run(network, func(t *testing.T) {
@@ -78,6 +84,7 @@ func testImplementations(t *testing.T, forkRPCURL string) {
 			ProtocolVersionsProxy:           superchain.ProtocolVersionsAddr,
 			UpgradeController:               proxyAdminOwner,
 			UseInterop:                      false,
+			CleanupAfterExit:                cleanupAfterExit,
 		})
 		require.NoError(t, err)
 		return out

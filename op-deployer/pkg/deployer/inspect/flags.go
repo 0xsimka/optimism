@@ -26,6 +26,7 @@ var (
 var Flags = []cli.Flag{
 	deployer.WorkdirFlag,
 	FlagOutfile,
+	deployer.CleanupAfterExitFlag,
 }
 
 var Commands = []*cli.Command{
@@ -72,9 +73,10 @@ var Commands = []*cli.Command{
 }
 
 type cliConfig struct {
-	Workdir string
-	Outfile string
-	ChainID common.Hash
+	Workdir          string
+	Outfile          string
+	ChainID          common.Hash
+	CleanupAfterExit bool
 }
 
 func readConfig(cliCtx *cli.Context) (cliConfig, error) {
@@ -101,8 +103,9 @@ func readConfig(cliCtx *cli.Context) (cliConfig, error) {
 	}
 
 	return cliConfig{
-		Workdir: cliCtx.String(deployer.WorkdirFlagName),
-		Outfile: cliCtx.String(OutfileFlagName),
-		ChainID: chainID,
+		Workdir:          cliCtx.String(deployer.WorkdirFlagName),
+		Outfile:          cliCtx.String(OutfileFlagName),
+		ChainID:          chainID,
+		CleanupAfterExit: cliCtx.Bool(deployer.CleanupAfterExitFlagName),
 	}, nil
 }

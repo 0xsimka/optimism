@@ -26,6 +26,7 @@ var Commands = cli.Commands{
 			deployer.L1RPCURLFlag,
 			deployer.DeploymentTargetFlag,
 			deployer.PrivateKeyFlag,
+			deployer.CleanupAfterExitFlag,
 			ConfigFlag,
 			OverrideArtifactsURLFlag,
 		}, oplog.CLIFlags(deployer.EnvVarPrefix)...),

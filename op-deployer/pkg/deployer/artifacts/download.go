@@ -32,9 +32,13 @@ type Extractor interface {
 	Extract(src string, dest string) (string, error)
 }
 
-func Download(ctx context.Context, loc *Locator, progressor DownloadProgressor) (foundry.StatDirFs, error) {
+func Download(ctx context.Context, loc *Locator, progressor DownloadProgressor) (artifactFs foundry.StatDirFs, cleanupFunc func() error, outputErr error) {
 	if progressor == nil {
 		progressor = NoopProgressor()
+	}
+
+	cleanup := func() error {
+		return nil
 	}
 
 	var u *url.URL
@@ -43,12 +47,12 @@ func Download(ctx context.Context, loc *Locator, progressor DownloadProgressor) 
 	if loc.IsTag() {
 		u, err = standard.ArtifactsURLForTag(loc.Tag)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get standard artifacts URL for tag %s: %w", loc.Tag, err)
+			return nil, cleanup, fmt.Errorf("failed to get standard artifacts URL for tag %s: %w", loc.Tag, err)
 		}
 
 		hash, err := standard.ArtifactsHashForTag(loc.Tag)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get standard artifacts hash for tag %s: %w", loc.Tag, err)
+			return nil, cleanup, fmt.Errorf("failed to get standard artifacts hash for tag %s: %w", loc.Tag, err)
 		}
 
 		checker = &hashIntegrityChecker{hash: hash}
@@ -60,38 +64,63 @@ func Download(ctx context.Context, loc *Locator, progressor DownloadProgressor) 
 	var artifactsFS fs.FS
 	switch u.Scheme {
 	case "http", "https":
-		artifactsFS, err = downloadHTTP(ctx, u, progressor, checker)
+		artifactsFS, cleanup, err = downloadHTTP(ctx, u, progressor, checker)
 		if err != nil {
-			return nil, fmt.Errorf("failed to download artifacts: %w", err)
+			return nil, cleanup, fmt.Errorf("failed to download artifacts: %w", err)
 		}
 	case "file":
 		artifactsFS = os.DirFS(u.Path)
 	default:
-		return nil, ErrUnsupportedArtifactsScheme
+		return nil, cleanup, ErrUnsupportedArtifactsScheme
 	}
-	return artifactsFS.(foundry.StatDirFs), nil
+	return artifactsFS.(foundry.StatDirFs), cleanup, nil
 }
 
-func downloadHTTP(ctx context.Context, u *url.URL, progressor DownloadProgressor, checker integrityChecker) (fs.FS, error) {
+func downloadHTTP(ctx context.Context, u *url.URL, progressor DownloadProgressor, checker integrityChecker) (fs.FS, func() error, error) {
 	cacher := &CachingDownloader{
 		d: new(HTTPDownloader),
 	}
 
+	cleanup := func() error {
+		return nil
+	}
+
 	tarballPath, err := cacher.Download(ctx, u.String(), progressor)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download artifacts: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to download artifacts: %w", err)
 	}
+	cleanup = func() error {
+		if err := os.Remove(tarballPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove tarball: %w", err)
+		}
+		return nil
+	}
+
 	tmpDir, err := os.MkdirTemp("", "op-deployer-artifacts-*")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	cleanup = func() error {
+		var outputErr error
+		if err := os.RemoveAll(tmpDir); err != nil && !os.IsNotExist(err) {
+			outputErr = fmt.Errorf("failed to remove temp dir: %w", err)
+		}
+		if err := os.Remove(tarballPath); err != nil && !os.IsNotExist(err) {
+			if outputErr != nil {
+				outputErr = fmt.Errorf("%w and failed to remove tarball: %w", outputErr, err)
+			} else {
+				outputErr = fmt.Errorf("failed to remove tarball: %w", err)
+			}
+		}
+		return outputErr
 	}
 	extractor := &TarballExtractor{
 		checker: checker,
 	}
 	if err := extractor.Extract(tarballPath, tmpDir); err != nil {
-		return nil, fmt.Errorf("failed to extract tarball: %w", err)
+		return nil, cleanup, fmt.Errorf("failed to extract tarball: %w", err)
 	}
-	return os.DirFS(path.Join(tmpDir, "forge-artifacts")), nil
+	return os.DirFS(path.Join(tmpDir, "forge-artifacts")), cleanup, nil
 }
 
 type HTTPDownloader struct{}

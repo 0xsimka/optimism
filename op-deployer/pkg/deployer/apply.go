@@ -37,8 +37,8 @@ type ApplyConfig struct {
 	PrivateKey       string
 	DeploymentTarget DeploymentTarget
 	Logger           log.Logger
-
-	privateKeyECDSA *ecdsa.PrivateKey
+	CleanupAfterExit bool
+	privateKeyECDSA  *ecdsa.PrivateKey
 }
 
 func (a *ApplyConfig) Check() error {
@@ -80,6 +80,7 @@ func ApplyCLI() func(cliCtx *cli.Context) error {
 		l1RPCUrl := cliCtx.String(L1RPCURLFlagName)
 		workdir := cliCtx.String(WorkdirFlagName)
 		privateKey := cliCtx.String(PrivateKeyFlagName)
+		cleanupAfterExit := cliCtx.Bool(CleanupAfterExitFlagName)
 		depTarget, err := NewDeploymentTarget(cliCtx.String(DeploymentTargetFlag.Name))
 		if err != nil {
 			return fmt.Errorf("failed to parse deployment target: %w", err)
@@ -93,6 +94,7 @@ func ApplyCLI() func(cliCtx *cli.Context) error {
 			PrivateKey:       privateKey,
 			DeploymentTarget: depTarget,
 			Logger:           l,
+			CleanupAfterExit: cleanupAfterExit,
 		})
 	}
 }
@@ -120,6 +122,7 @@ func Apply(ctx context.Context, cfg ApplyConfig) error {
 		State:              st,
 		Logger:             cfg.Logger,
 		StateWriter:        pipeline.WorkdirStateWriter(cfg.Workdir),
+		CleanupAfterExit:   cfg.CleanupAfterExit,
 	}); err != nil {
 		return err
 	}
@@ -140,6 +143,7 @@ type ApplyPipelineOpts struct {
 	State              *state.State
 	Logger             log.Logger
 	StateWriter        pipeline.StateWriter
+	CleanupAfterExit   bool
 }
 
 func ApplyPipeline(
@@ -152,7 +156,14 @@ func ApplyPipeline(
 	}
 	st := opts.State
 
-	l1ArtifactsFS, err := artifacts.Download(ctx, intent.L1ContractsLocator, artifacts.BarProgressor())
+	l1ArtifactsFS, cleanupL1Artifacts, err := artifacts.Download(ctx, intent.L1ContractsLocator, artifacts.BarProgressor())
+	if opts.CleanupAfterExit && cleanupL1Artifacts != nil {
+		defer func() {
+			if err := cleanupL1Artifacts(); err != nil {
+				opts.Logger.Error("failed to cleanup L1 artifacts", "error", err)
+			}
+		}()
+	}
 	if err != nil {
 		return fmt.Errorf("failed to download L1 artifacts: %w", err)
 	}
@@ -161,7 +172,14 @@ func ApplyPipeline(
 	if intent.L1ContractsLocator.Equal(intent.L2ContractsLocator) {
 		l2ArtifactsFS = l1ArtifactsFS
 	} else {
-		l2Afs, err := artifacts.Download(ctx, intent.L2ContractsLocator, artifacts.BarProgressor())
+		l2Afs, cleanupL2Artifacts, err := artifacts.Download(ctx, intent.L2ContractsLocator, artifacts.BarProgressor())
+		if opts.CleanupAfterExit && cleanupL2Artifacts != nil {
+			defer func() {
+				if err := cleanupL2Artifacts(); err != nil {
+					opts.Logger.Error("failed to cleanup L2 artifacts", "error", err)
+				}
+			}()
+		}
 		if err != nil {
 			return fmt.Errorf("failed to download L2 artifacts: %w", err)
 		}

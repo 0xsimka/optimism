@@ -51,6 +51,12 @@ func (d *deployerKey) String() string {
 	return "deployer-key"
 }
 
+var cleanupAfterExit bool
+
+func init() {
+	cleanupAfterExit = testutil.ShouldCleanupAfterExit()
+}
+
 func TestEndToEndApply(t *testing.T) {
 	op_e2e.InitParallel(t)
 
@@ -95,6 +101,7 @@ func TestEndToEndApply(t *testing.T) {
 				State:              st,
 				Logger:             lgr,
 				StateWriter:        pipeline.NoopStateWriter(),
+				CleanupAfterExit:   cleanupAfterExit,
 			},
 		))
 
@@ -112,6 +119,7 @@ func TestEndToEndApply(t *testing.T) {
 				State:              st,
 				Logger:             lgr,
 				StateWriter:        pipeline.NoopStateWriter(),
+				CleanupAfterExit:   cleanupAfterExit,
 			},
 		))
 
@@ -134,6 +142,7 @@ func TestEndToEndApply(t *testing.T) {
 				State:              st,
 				Logger:             lgr,
 				StateWriter:        pipeline.NoopStateWriter(),
+				CleanupAfterExit:   cleanupAfterExit,
 			},
 		), pipeline.ErrRefusingToDeployTaggedReleaseWithoutOPCM)
 	})
@@ -151,6 +160,7 @@ func TestEndToEndApply(t *testing.T) {
 				State:              st,
 				Logger:             lgr,
 				StateWriter:        pipeline.NoopStateWriter(),
+				CleanupAfterExit:   cleanupAfterExit,
 			},
 		))
 
@@ -557,6 +567,7 @@ func setupGenesisChain(t *testing.T, l1ChainID uint64) (deployer.ApplyPipelineOp
 		State:              st,
 		Logger:             lgr,
 		StateWriter:        pipeline.NoopStateWriter(),
+		CleanupAfterExit:   cleanupAfterExit,
 	}
 
 	return opts, intent, st

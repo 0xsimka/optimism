@@ -32,6 +32,7 @@ type ValidatorConfig struct {
 	Logger           log.Logger
 	ArtifactsLocator *artifacts.Locator
 	Input            ValidatorInput
+	CleanupAfterExit bool
 
 	privateKeyECDSA *ecdsa.PrivateKey
 }
@@ -97,6 +98,7 @@ func ValidatorCLI(cliCtx *cli.Context) error {
 	outfile := cliCtx.String(OutfileFlagName)
 	artifactsURLStr := cliCtx.String(ArtifactsLocatorFlagName)
 	configFile := cliCtx.String(ConfigFileFlag.Name)
+	cleanupAfterExit := cliCtx.Bool(deployer.CleanupAfterExitFlagName)
 
 	artifactsLocator := new(artifacts.Locator)
 	if err := artifactsLocator.UnmarshalText([]byte(artifactsURLStr)); err != nil {
@@ -122,6 +124,7 @@ func ValidatorCLI(cliCtx *cli.Context) error {
 		Logger:           l,
 		ArtifactsLocator: artifactsLocator,
 		Input:            input,
+		CleanupAfterExit: cleanupAfterExit,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deploy Validator: %w", err)
@@ -141,7 +144,14 @@ func Validator(ctx context.Context, cfg ValidatorConfig) (ValidatorOutput, error
 
 	lgr := cfg.Logger
 
-	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	artifactsFS, cleanupArtifacts, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	if cfg.CleanupAfterExit && cleanupArtifacts != nil {
+		defer func() {
+			if err := cleanupArtifacts(); err != nil {
+				lgr.Error("failed to cleanup artifacts", "error", err)
+			}
+		}()
+	}
 	if err != nil {
 		return output, fmt.Errorf("failed to download artifacts: %w", err)
 	}

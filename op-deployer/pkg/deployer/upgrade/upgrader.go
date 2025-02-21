@@ -101,7 +101,16 @@ func UpgradeCLI(upgrader Upgrader) func(*cli.Context) error {
 			return fmt.Errorf("unknown deployment target: %s", deploymentTarget)
 		}
 
-		artifactsFS, err := artifacts.Download(ctx, artifactsLocator, artifacts.BarProgressor())
+		cleanupAfterExit := cliCtx.Bool(deployer.CleanupAfterExitFlag.Name)
+
+		artifactsFS, cleanupArtifacts, err := artifacts.Download(ctx, artifactsLocator, artifacts.BarProgressor())
+		if cleanupAfterExit && cleanupArtifacts != nil {
+			defer func() {
+				if err := cleanupArtifacts(); err != nil {
+					lgr.Error("failed to cleanup artifacts", "error", err)
+				}
+			}()
+		}
 		if err != nil {
 			return fmt.Errorf("failed to download L1 artifacts: %w", err)
 		}

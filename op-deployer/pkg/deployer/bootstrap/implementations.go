@@ -43,6 +43,7 @@ type ImplementationsConfig struct {
 	ProtocolVersionsProxy           common.Address     `cli:"protocol-versions-proxy"`
 	UpgradeController               common.Address     `cli:"upgrade-controller"`
 	UseInterop                      bool               `cli:"use-interop"`
+	CleanupAfterExit                bool               `cli:"cleanup-after-exit"`
 
 	Logger log.Logger
 
@@ -133,7 +134,14 @@ func Implementations(ctx context.Context, cfg ImplementationsConfig) (opcm.Deplo
 
 	lgr := cfg.Logger
 
-	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	artifactsFS, cleanupArtifacts, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	if cfg.CleanupAfterExit && cleanupArtifacts != nil {
+		defer func() {
+			if err := cleanupArtifacts(); err != nil {
+				lgr.Error("failed to cleanup artifacts", "error", err)
+			}
+		}()
+	}
 	if err != nil {
 		return dio, fmt.Errorf("failed to download artifacts: %w", err)
 	}

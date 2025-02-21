@@ -30,6 +30,7 @@ type SuperchainConfig struct {
 	PrivateKey       string
 	Logger           log.Logger
 	ArtifactsLocator *artifacts.Locator
+	CleanupAfterExit bool
 
 	privateKeyECDSA *ecdsa.PrivateKey
 
@@ -99,7 +100,7 @@ func SuperchainCLI(cliCtx *cli.Context) error {
 	requiredVersionStr := cliCtx.String(RequiredProtocolVersionFlagName)
 	recommendedVersionStr := cliCtx.String(RecommendedProtocolVersionFlagName)
 	outfile := cliCtx.String(OutfileFlagName)
-
+	cleanupAfterExit := cliCtx.Bool(deployer.CleanupAfterExitFlagName)
 	cfg := SuperchainConfig{
 		L1RPCUrl:                  l1RPCUrl,
 		PrivateKey:                privateKey,
@@ -109,6 +110,7 @@ func SuperchainCLI(cliCtx *cli.Context) error {
 		ProtocolVersionsOwner:     protocolVersionsOwner,
 		Guardian:                  guardian,
 		Paused:                    paused,
+		CleanupAfterExit:          cleanupAfterExit,
 	}
 
 	if err := cfg.RequiredProtocolVersion.UnmarshalText([]byte(requiredVersionStr)); err != nil {
@@ -139,7 +141,15 @@ func Superchain(ctx context.Context, cfg SuperchainConfig) (opcm.DeploySuperchai
 	}
 
 	lgr := cfg.Logger
-	artifactsFS, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	cleanupAfterExit := cfg.CleanupAfterExit
+	artifactsFS, cleanupArtifacts, err := artifacts.Download(ctx, cfg.ArtifactsLocator, artifacts.BarProgressor())
+	if cleanupAfterExit && cleanupArtifacts != nil {
+		defer func() {
+			if err := cleanupArtifacts(); err != nil {
+				lgr.Error("failed to cleanup artifacts", "error", err)
+			}
+		}()
+	}
 	if err != nil {
 		return dso, fmt.Errorf("failed to download artifacts: %w", err)
 	}

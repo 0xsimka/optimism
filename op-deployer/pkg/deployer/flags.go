@@ -12,14 +12,15 @@ import (
 )
 
 const (
-	EnvVarPrefix       = "DEPLOYER"
-	L1RPCURLFlagName   = "l1-rpc-url"
-	L1ChainIDFlagName  = "l1-chain-id"
-	L2ChainIDsFlagName = "l2-chain-ids"
-	WorkdirFlagName    = "workdir"
-	OutdirFlagName     = "outdir"
-	PrivateKeyFlagName = "private-key"
-	IntentTypeFlagName = "intent-type"
+	EnvVarPrefix             = "DEPLOYER"
+	L1RPCURLFlagName         = "l1-rpc-url"
+	CleanupAfterExitFlagName = "cleanup-after-exit"
+	L1ChainIDFlagName        = "l1-chain-id"
+	L2ChainIDsFlagName       = "l2-chain-ids"
+	WorkdirFlagName          = "workdir"
+	OutdirFlagName           = "outdir"
+	PrivateKeyFlagName       = "private-key"
+	IntentTypeFlagName       = "intent-type"
 )
 
 type DeploymentTarget string
@@ -54,6 +55,15 @@ var (
 		EnvVars: []string{
 			"L1_RPC_URL",
 		},
+	}
+	CleanupAfterExitFlag = &cli.BoolFlag{
+		Name: CleanupAfterExitFlagName,
+		Usage: "Cleanup after exit. " +
+			"If set, the deployer will attempt to clean up any temporary files created during the deployment.",
+		EnvVars: []string{
+			"CLEANUP_AFTER_EXIT",
+		},
+		Value: false,
 	}
 	L1ChainIDFlag = &cli.Uint64Flag{
 		Name:    L1ChainIDFlagName,
@@ -114,12 +124,14 @@ var ApplyFlags = []cli.Flag{
 	WorkdirFlag,
 	PrivateKeyFlag,
 	DeploymentTargetFlag,
+	CleanupAfterExitFlag,
 }
 
 var UpgradeFlags = []cli.Flag{
 	L1RPCURLFlag,
 	PrivateKeyFlag,
 	DeploymentTargetFlag,
+	CleanupAfterExitFlag,
 }
 
 func PrefixEnvVar(name string) []string {

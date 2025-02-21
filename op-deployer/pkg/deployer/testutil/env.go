@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 	"runtime"
 	"testing"
@@ -14,6 +15,10 @@ import (
 	op_service "github.com/ethereum-optimism/optimism/op-service"
 	"github.com/stretchr/testify/require"
 )
+
+func ShouldCleanupAfterExit() bool {
+	return os.Getenv("CLEANUP_AFTER_EXIT") == "true" || os.Getenv("CLEANUP_AFTER_EXIT") == ""
+}
 
 func LocalArtifacts(t *testing.T) (*artifacts.Locator, foundry.StatDirFs) {
 	_, testFilename, _, ok := runtime.Caller(0)
@@ -27,7 +32,14 @@ func LocalArtifacts(t *testing.T) (*artifacts.Locator, foundry.StatDirFs) {
 		URL: artifactsURL,
 	}
 
-	artifactsFS, err := artifacts.Download(context.Background(), loc, artifacts.NoopProgressor())
+	artifactsFS, cleanupArtifacts, err := artifacts.Download(context.Background(), loc, artifacts.NoopProgressor())
+	if ShouldCleanupAfterExit() && cleanupArtifacts != nil {
+		defer func() {
+			if err := cleanupArtifacts(); err != nil {
+				t.Errorf("failed to cleanup artifacts: %v", err)
+			}
+		}()
+	}
 	require.NoError(t, err)
 
 	return loc, artifactsFS

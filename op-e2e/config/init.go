@@ -319,6 +319,7 @@ func initAllocType(root string, allocType AllocType) {
 					State:              st,
 					Logger:             lgr,
 					StateWriter:        pipeline.NoopStateWriter(),
+					CleanupAfterExit:   false, // for backwards compatibility
 				},
 			); err != nil {
 				panic(fmt.Errorf("failed to apply pipeline: %w", err))

@@ -147,6 +147,7 @@ var (
 
 var ImplementationsFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
+	deployer.CleanupAfterExitFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
 	ArtifactsLocatorFlag,
@@ -165,6 +166,7 @@ var ImplementationsFlags = []cli.Flag{
 
 var ProxyFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
+	deployer.CleanupAfterExitFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
 	ArtifactsLocatorFlag,
@@ -173,6 +175,7 @@ var ProxyFlags = []cli.Flag{
 
 var SuperchainFlags = []cli.Flag{
 	deployer.L1RPCURLFlag,
+	deployer.CleanupAfterExitFlag,
 	deployer.PrivateKeyFlag,
 	OutfileFlag,
 	ArtifactsLocatorFlag,
