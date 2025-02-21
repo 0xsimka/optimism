@@ -106,7 +106,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		em1 := &types.ExecutingMessage{Timestamp: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			// include one executing message to ensure one hazard is returned
-			return bl, 0, map[uint32]*types.ExecutingMessage{1: em1}, nil
+			return bl, 1, map[uint32]*types.ExecutingMessage{1: em1}, nil
 		}
 		usd.deps = mockDependencySet{}
 		count := 0
@@ -126,15 +126,18 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 	})
 	t.Run("HazardCycleChecks returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
-		chainID := eth.ChainIDFromUInt64(0)
 		usd := &mockCrossUnsafeDeps{}
+
+		chainID := eth.ChainIDFromUInt64(0)
+		chainIdx, err := usd.deps.ChainIndexFromID(chainID)
+		require.NoError(t, err)
 		crossUnsafe := types.BlockSeal{Hash: common.Hash{0x01}}
 		usd.crossUnsafeFn = func(chainID eth.ChainID) (types.BlockSeal, error) {
 			return crossUnsafe, nil
 		}
 		bl := eth.BlockRef{ParentHash: common.Hash{0x01}, Number: 1, Time: 1}
-		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1, LogIdx: 2}
-		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1, LogIdx: 1}
+		em1 := &types.ExecutingMessage{Chain: chainIdx, Timestamp: 1, LogIdx: 2}
+		em2 := &types.ExecutingMessage{Chain: chainIdx, Timestamp: 1, LogIdx: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return bl, 3, map[uint32]*types.ExecutingMessage{1: em1, 2: em2}, nil
 		}
@@ -144,7 +147,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		usd.deps = mockDependencySet{}
 
 		// HazardCycleChecks returns an error with appropriate wrapping
-		err := CrossUnsafeUpdate(logger, chainID, usd)
+		err = CrossUnsafeUpdate(logger, chainID, usd)
 		require.ErrorContains(t, err, "cycle detected")
 		require.ErrorContains(t, err, "failed to verify block")
 	})

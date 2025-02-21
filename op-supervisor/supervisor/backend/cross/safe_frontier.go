@@ -23,6 +23,7 @@ type SafeFrontierCheckDeps interface {
 //     local-safe block, after the cross-safe block.
 func HazardSafeFrontierChecks(d SafeFrontierCheckDeps, inL1Source eth.BlockID, hazards map[types.ChainIndex]types.BlockSeal) error {
 	depSet := d.DependencySet()
+	fmt.Println("HazardSafeFrontierChecks:", hazards)
 	for hazardChainIndex, hazardBlock := range hazards {
 		hazardChainID, err := depSet.ChainIDFromIndex(hazardChainIndex)
 		if err != nil {

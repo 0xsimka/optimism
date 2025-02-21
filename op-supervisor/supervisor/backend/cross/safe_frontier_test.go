@@ -2,6 +2,7 @@ package cross
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -186,7 +187,9 @@ func (m mockDependencySet) CanInitiateAt(chain eth.ChainID, timestamp uint64) (b
 }
 
 func (m mockDependencySet) ChainIDFromIndex(index types.ChainIndex) (eth.ChainID, error) {
+	fmt.Println("ChainIDFromIndex", index)
 	if m.chainIDFromIndexfn != nil {
+		fmt.Println("chainIDFromIndexfn")
 		return m.chainIDFromIndexfn()
 	}
 	id := eth.ChainIDFromUInt64(uint64(index) - 1000)

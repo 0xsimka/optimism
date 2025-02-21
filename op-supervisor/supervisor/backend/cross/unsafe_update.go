@@ -56,6 +56,8 @@ func CrossUnsafeUpdate(logger log.Logger, chainID eth.ChainID, d CrossUnsafeDeps
 		return fmt.Errorf("failed to check for cross-chain hazards: %w", err)
 	}
 
+	fmt.Println("hazards", hazards)
+
 	if err := HazardUnsafeFrontierChecks(d, hazards); err != nil {
 		return fmt.Errorf("failed to verify block %s in cross-unsafe frontier: %w", candidate, err)
 	}

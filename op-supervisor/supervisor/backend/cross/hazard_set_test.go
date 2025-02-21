@@ -76,22 +76,8 @@ func (m *mockHazardDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) err
 	if m.verifyBlockFn != nil {
 		return m.verifyBlockFn(chainID, block)
 	}
-	// Look up the block in our test data
-	chainIndex, err := m.ChainIndexFromID(chainID)
-	if err != nil {
-		return err
-	}
-	key := blockKey{
-		chain:  chainIndex,
-		number: block.Number,
-	}
-	if foundBlock, ok := m.blockMap[key]; ok {
-		if foundBlock.hash == block.Hash {
-			return nil
-		}
-		return fmt.Errorf("block hash mismatch: expected %s, got %s", block.Hash, foundBlock.hash)
-	}
-	return fmt.Errorf("failed to check if message exists: block not found: %w", types.ErrFuture)
+	// By default, blocks are not cross-safe/unsafe
+	return fmt.Errorf("not cross-safe")
 }
 
 func (m *mockHazardDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
@@ -160,10 +146,11 @@ func makeBlockSeal(number, timestamp uint64, chain types.ChainIndex) types.Block
 
 // Test vectors representing different dependency scenarios
 type testVector struct {
-	name      string
-	blocks    []blockDef
-	expected  map[types.ChainIndex]types.BlockSeal
-	expectErr error
+	name          string
+	blocks        []blockDef
+	expected      map[types.ChainIndex]types.BlockSeal
+	expectErr     error
+	verifyBlockFn func(chainID eth.ChainID, block eth.BlockID) error
 }
 
 type blockDef struct {
@@ -312,11 +299,106 @@ func TestHazardSet_Add(t *testing.T) {
 				3: makeBlockSeal(1, 1, 3),
 			},
 		},
+		// {
+		// 	name: "Base Case - Already Cross Safe/Unsafe",
+		// 	blocks: []blockDef{
+		// 		makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
+		// 		makeBlock(1, 1, 1), // Will be marked as already cross-safe/unsafe
+		// 	},
+		// 	expected: map[types.ChainIndex]types.BlockSeal{},
+		// 	verifyBlockFn: func(chainID eth.ChainID, block eth.BlockID) error {
+		// 		// Simulate block already being cross-safe/unsafe
+		// 		return nil
+		// 	},
+		// },
+		// {
+		// 	name: "Mixed Base Cases",
+		// 	blocks: []blockDef{
+		// 		makeBlock(1, 1, 0,
+		// 			makeMessage(1, 1, 1, 1), // Points to cross-safe block
+		// 			makeMessage(2, 1, 1, 1), // Points to non-cross-safe block
+		// 		),
+		// 		makeBlock(1, 1, 1), // Will be marked as cross-safe
+		// 		makeBlock(1, 1, 2), // Not cross-safe, needs checking
+		// 	},
+		// 	expected: map[types.ChainIndex]types.BlockSeal{
+		// 		2: makeBlockSeal(1, 1, 2),
+		// 	},
+		// 	verifyBlockFn: func(chainID eth.ChainID, block eth.BlockID) error {
+		// 		// Chain 1 is cross-safe, Chain 2 is not
+		// 		if chainID == eth.ChainIDFromUInt64(1) {
+		// 			return nil
+		// 		}
+		// 		return fmt.Errorf("not cross-safe")
+		// 	},
+		// },
+		// {
+		// 	name: "Deep Recursion With Multiple Base Cases",
+		// 	blocks: []blockDef{
+		// 		makeBlock(1, 1, 0, makeMessage(1, 1, 1, 1)),
+		// 		makeBlock(1, 1, 1, makeMessage(2, 1, 1, 1)),
+		// 		makeBlock(1, 1, 2, makeMessage(3, 1, 1, 1)),
+		// 		makeBlock(1, 1, 3, makeMessage(4, 1, 1, 1)),
+		// 		makeBlock(1, 1, 4), // Chain 4 not cross-safe
+		// 	},
+		// 	expected: map[types.ChainIndex]types.BlockSeal{
+		// 		4: makeBlockSeal(1, 1, 4),
+		// 	},
+		// 	verifyBlockFn: func(chainID eth.ChainID, block eth.BlockID) error {
+		// 		// Only chain 4 is not cross-safe
+		// 		if chainID == eth.ChainIDFromUInt64(4) {
+		// 			return fmt.Errorf("not cross-safe")
+		// 		}
+		// 		return nil
+		// 	},
+		// },
+		{
+			name: "Multiple Independent Chains",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0,
+					makeMessage(1, 1, 1, 1),
+					makeMessage(2, 1, 1, 1),
+				),
+				// Chain 1: A -> B -> C
+				makeBlock(1, 1, 1, makeMessage(3, 1, 1, 1)),
+				makeBlock(1, 1, 3),
+				// Chain 2: X -> Y -> Z
+				makeBlock(1, 1, 2, makeMessage(4, 1, 1, 1)),
+				makeBlock(1, 1, 4),
+			},
+			expected: map[types.ChainIndex]types.BlockSeal{
+				1: makeBlockSeal(1, 1, 1),
+				2: makeBlockSeal(1, 1, 2),
+				3: makeBlockSeal(1, 1, 3),
+				4: makeBlockSeal(1, 1, 4),
+			},
+		},
+		{
+			name: "Already Processed Block",
+			blocks: []blockDef{
+				makeBlock(1, 1, 0,
+					makeMessage(1, 1, 1, 1),
+					makeMessage(2, 1, 1, 1),
+				),
+				// Both chain 1 and 2 reference chain 3
+				makeBlock(1, 1, 1, makeMessage(3, 1, 1, 1)),
+				makeBlock(1, 1, 2, makeMessage(3, 1, 1, 1)),
+				makeBlock(1, 1, 3),
+			},
+			expected: map[types.ChainIndex]types.BlockSeal{
+				1: makeBlockSeal(1, 1, 1),
+				2: makeBlockSeal(1, 1, 2),
+				3: makeBlockSeal(1, 1, 3),
+			},
+		},
 	}
 
 	for _, tc := range vectors {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := setupMockDeps(t, tc)
+			if tc.verifyBlockFn != nil {
+				deps.verifyBlockFn = tc.verifyBlockFn
+			}
 			hs, err := NewHazardSet(deps)
 			require.NoError(t, err)
 

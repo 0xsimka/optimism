@@ -312,8 +312,10 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 	})
 	t.Run("HazardSafeFrontierChecks returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
-		chainID := eth.ChainIDFromUInt64(0)
 		csd := &mockCrossSafeDeps{}
+		chainID := eth.ChainIDFromUInt64(0)
+		chainIdx, err := csd.DependencySet().ChainIndexFromID(chainID)
+		require.NoError(t, err)
 		candidate := eth.BlockRef{Number: 1}
 		csd.candidateCrossSafeFn = func() (types.DerivedBlockRefPair, error) {
 			return types.DerivedBlockRefPair{
@@ -322,7 +324,14 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 			}, nil
 		}
 		opened := eth.BlockRef{Number: 1}
-		execs := map[uint32]*types.ExecutingMessage{1: {}}
+		// Create an executing message that would actually create a frontier hazard
+		execs := map[uint32]*types.ExecutingMessage{
+			1: {
+				Chain:     chainIdx,
+				Timestamp: 1,
+				LogIdx:    1,
+			},
+		}
 		csd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return opened, 10, execs, nil
 		}
@@ -330,18 +339,17 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 			return types.BlockSeal{Number: 1, Timestamp: 1}, nil
 		}
 		count := 0
-		csd.deps = mockDependencySet{}
-		// cause CrossSafeHazards to return an error by making ChainIDFromIndex return an error
-		// but only on the second call (which will be used by HazardSafeFrontierChecks)
-		csd.deps.chainIDFromIndexfn = func() (eth.ChainID, error) {
-			defer func() { count++ }()
-			if count < 2 {
-				return eth.ChainID{}, nil
-			}
-			return eth.ChainID{}, errors.New("some error")
+		csd.deps = mockDependencySet{
+			// Return a non-empty set of dependencies
+			chainIDFromIndexfn: func() (eth.ChainID, error) {
+				defer func() { count++ }()
+				if count < 4 {
+					return eth.ChainIDFromUInt64(1), nil
+				}
+				return eth.ChainID{}, errors.New("some error")
+			},
 		}
-		// when CrossSafeHazards returns an error,
-		// the error is returned
+		// Now we should get an error from HazardSafeFrontierChecks
 		pair, err := scopedCrossSafeUpdate(logger, chainID, csd)
 		require.ErrorContains(t, err, "some error")
 		require.ErrorContains(t, err, "frontier")
@@ -349,8 +357,10 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 	})
 	t.Run("HazardCycleChecks returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
-		chainID := eth.ChainIDFromUInt64(0)
 		csd := &mockCrossSafeDeps{}
+		chainID := eth.ChainIDFromUInt64(0)
+		chainIdx, err := csd.DependencySet().ChainIndexFromID(chainID)
+		require.NoError(t, err)
 		candidate := eth.BlockRef{Number: 1, Time: 1}
 		candidateScope := eth.BlockRef{Number: 2}
 		csd.candidateCrossSafeFn = func() (types.DerivedBlockRefPair, error) {
@@ -360,8 +370,8 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 			}, nil
 		}
 		opened := eth.BlockRef{Number: 1, Time: 1}
-		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1, LogIdx: 2}
-		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1, LogIdx: 1}
+		em1 := &types.ExecutingMessage{Chain: chainIdx, Timestamp: 1, LogIdx: 2}
+		em2 := &types.ExecutingMessage{Chain: chainIdx, Timestamp: 1, LogIdx: 1}
 		csd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return opened, 3, map[uint32]*types.ExecutingMessage{1: em1, 2: em2}, nil
 		}
@@ -378,8 +388,10 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 	})
 	t.Run("UpdateCrossSafe returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
-		chainID := eth.ChainIDFromUInt64(0)
 		csd := &mockCrossSafeDeps{}
+		chainID := eth.ChainIDFromUInt64(0)
+		chainIdx, err := csd.DependencySet().ChainIndexFromID(chainID)
+		require.NoError(t, err)
 		candidate := eth.BlockRef{Number: 1}
 		candidateScope := eth.BlockRef{Number: 2}
 		csd.candidateCrossSafeFn = func() (types.DerivedBlockRefPair, error) {
@@ -389,7 +401,7 @@ func TestScopedCrossSafeUpdate(t *testing.T) {
 			}, nil
 		}
 		opened := eth.BlockRef{Number: 1}
-		execs := map[uint32]*types.ExecutingMessage{1: {}}
+		execs := map[uint32]*types.ExecutingMessage{1: {Chain: chainIdx, Timestamp: 1, LogIdx: 2}}
 		csd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return opened, 10, execs, nil
 		}

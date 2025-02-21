@@ -54,9 +54,9 @@ func (d *unsafeDeps) VerifyBlock(chainID eth.ChainID, block eth.BlockID) error {
 }
 
 // ChainIndexFromID implements HazardDeps by using the dependency set
-func (d *unsafeDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error) {
-	return d.DependencySet().ChainIndexFromID(id)
-}
+// func (d *unsafeDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error) {
+// 	return d.DependencySet().ChainIndexFromID(id)
+// }
 
 // OpenBlock implements HazardDeps by using the dependency set
 func (d *unsafeDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {

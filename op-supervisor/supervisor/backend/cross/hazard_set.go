@@ -1,7 +1,6 @@
 package cross
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -18,7 +17,9 @@ type HazardDeps interface {
 	// VerifyBlock verifies a block according to safe/unsafe rules
 	VerifyBlock(chainID eth.ChainID, block eth.BlockID) error
 	// ChainIndexFromID converts a ChainID to a ChainIndex
-	ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error)
+	// ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error)
+	// ChainIDFromIndex converts a ChainIndex to a ChainID
+	// ChainIDFromIndex(index types.ChainIndex) (eth.ChainID, error)
 	// OpenBlock opens a block to access its executing messages
 	OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
 }
@@ -29,8 +30,6 @@ type HazardSet struct {
 	hazards map[types.ChainIndex]types.BlockSeal
 	// deps provides access to dependency verification
 	deps HazardDeps
-	// processing tracks chains being processed to detect cycles
-	processing map[types.ChainIndex]bool
 }
 
 // NewHazardSet creates a new HazardSet with the given dependencies
@@ -39,177 +38,128 @@ func NewHazardSet(deps HazardDeps) (*HazardSet, error) {
 		return nil, fmt.Errorf("hazard dependencies cannot be nil")
 	}
 	return &HazardSet{
-		hazards:    make(map[types.ChainIndex]types.BlockSeal),
-		deps:       deps,
-		processing: make(map[types.ChainIndex]bool),
+		hazards: make(map[types.ChainIndex]types.BlockSeal),
+		deps:    deps,
 	}, nil
 }
 
-// verifyMessage checks a single message and its recursive dependencies
-func (h *HazardSet) verifyMessage(msg *types.ExecutingMessage, blockTimestamp uint64) error {
-	// Check timestamp invariant
-	if msg.Timestamp > blockTimestamp {
-		return fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", msg.Timestamp, blockTimestamp)
-	}
-
-	// Get the chain ID for the message's source chain
-	srcChainID, err := h.deps.DependencySet().ChainIDFromIndex(msg.Chain)
-	if err != nil {
-		if errors.Is(err, types.ErrUnknownChain) {
-			return fmt.Errorf("unknown chain %d: %w", msg.Chain, types.ErrConflict)
-		}
-		return fmt.Errorf("failed to get chain ID for index %d: %w", msg.Chain, err)
-	}
-
-	// Check if we can execute at this chain
-	canExecute, err := h.deps.DependencySet().CanExecuteAt(srcChainID, blockTimestamp)
-	if err != nil {
-		return fmt.Errorf("failed to check if can execute at chain %s: %w", srcChainID, err)
-	}
-	if !canExecute {
-		return fmt.Errorf("cannot execute at chain %s: %w", srcChainID, types.ErrConflict)
-	}
-
-	// Check if we can initiate at this chain
-	canInitiate, err := h.deps.DependencySet().CanInitiateAt(srcChainID, msg.Timestamp)
-	if err != nil {
-		return fmt.Errorf("failed to check if can initiate at chain %s: %w", srcChainID, err)
-	}
-	if !canInitiate {
-		return fmt.Errorf("cannot initiate at chain %s: %w", srcChainID, types.ErrConflict)
-	}
-
-	// Check if the message exists in a block
-	query := types.ContainsQuery{
-		BlockNum:  msg.BlockNum,
-		LogIdx:    msg.LogIdx,
-		LogHash:   msg.Hash,
-		Timestamp: msg.Timestamp,
-	}
-	includedIn, err := h.deps.Contains(srcChainID, query)
-	if err != nil {
-		return fmt.Errorf("failed to check if message exists: %w", err)
-	}
-
-	// If we already have a hazard for this chain, make sure it's the same one
-	if existing, ok := h.hazards[msg.Chain]; ok {
-		if existing != includedIn {
-			return fmt.Errorf("message depends on block %s but already depend on %s", includedIn, existing)
-		}
-		return nil // Already processed this chain
-	}
-
-	// Check for cycles
-	if h.processing[msg.Chain] {
-		return fmt.Errorf("dependency cycle detected at chain %d", msg.Chain)
-	}
-	h.processing[msg.Chain] = true
-	defer delete(h.processing, msg.Chain)
-
-	// Recursively verify the referenced block's messages
-	_, _, execMsgs, err := h.deps.OpenBlock(srcChainID, msg.BlockNum)
-	if err != nil {
-		return fmt.Errorf("failed to open block %s: %w", includedIn, err)
-	}
-
-	// Add the hazard before recursing to handle diamond patterns
-	h.hazards[msg.Chain] = includedIn
-
-	// Verify all messages in the referenced block
-	for _, depMsg := range execMsgs {
-		if err := h.verifyMessage(depMsg, includedIn.Timestamp); err != nil {
-			return fmt.Errorf("failed to verify dependency: %w", err)
-		}
-	}
-
-	return nil
+// blockToProcess represents a block that needs to be processed for hazards
+type blockToProcess struct {
+	chainID eth.ChainID
+	block   types.BlockSeal
 }
 
-// Add adds a block to the hazard set, recursively checking for dependencies
+// Add adds a block to the hazard set and recursively adds any blocks that it depends on.
+// If a block has already been added, it will be skipped.
+// If a block has already been added with a different hash, an error will be returned.
 func (h *HazardSet) Add(chainID eth.ChainID, block types.BlockSeal) error {
-	// Open the block to get its executing messages
-	_, _, execMsgs, err := h.deps.OpenBlock(chainID, block.Number)
-	if err != nil {
-		return fmt.Errorf("failed to open block %s: %w", block, err)
-	}
+	depSet := h.deps.DependencySet()
 
-	// Check each executing message for dependencies
-	for _, msg := range execMsgs {
-		// Get the chain ID for the message's source chain
-		srcChainID, err := h.deps.DependencySet().ChainIDFromIndex(msg.Chain)
+	// Initialize stack with the first block
+	stack := []blockToProcess{{chainID: chainID, block: block}}
+
+	// Process blocks until the stack is empty
+	for len(stack) > 0 {
+		// Pop the next block to process
+		next := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Convert chain ID to index
+		chainIndex, err := depSet.ChainIndexFromID(next.chainID)
 		if err != nil {
-			if errors.Is(err, types.ErrUnknownChain) {
-				return fmt.Errorf("unknown chain %d: %w", msg.Chain, types.ErrConflict)
+			return fmt.Errorf("failed to get chain index: %w", err)
+		}
+		fmt.Println("ChainIndexFromID", chainIndex)
+
+		// Open the block to get its messages
+		ref, _, execMsgs, err := h.deps.OpenBlock(next.chainID, next.block.Number)
+		if err != nil {
+			return fmt.Errorf("failed to open block: %w", err)
+		}
+
+		// Verify the block matches what we expect
+		if ref.Hash != next.block.Hash {
+			return fmt.Errorf("block hash mismatch: expected %s, got %s", next.block.Hash, ref.Hash)
+		}
+
+		// Process each message in the block
+		for _, msg := range execMsgs {
+			fmt.Println("Processing message", msg)
+			// Skip messages targeting the source chain
+			// if msg.Chain == chainIndex {
+			// 	fmt.Println("Skipping message", msg)
+			// 	continue
+			// }
+
+			msgChainID, err := depSet.ChainIDFromIndex(msg.Chain)
+			if err != nil {
+				return fmt.Errorf("failed to get chain ID: %w", err)
 			}
-			return fmt.Errorf("failed to get chain ID for index %d: %w", msg.Chain, err)
-		}
+			fmt.Println("Message chain ID", msgChainID)
 
-		// Check if we can execute at this chain
-		canExecute, err := h.deps.DependencySet().CanExecuteAt(srcChainID, block.Timestamp)
-		if err != nil {
-			return fmt.Errorf("failed to check if can execute at chain %s: %w", srcChainID, err)
-		}
-		if !canExecute {
-			return fmt.Errorf("cannot execute at chain %s: %w", srcChainID, types.ErrConflict)
-		}
-
-		// Check if we can initiate at this chain
-		canInitiate, err := h.deps.DependencySet().CanInitiateAt(srcChainID, msg.Timestamp)
-		if err != nil {
-			return fmt.Errorf("failed to check if can initiate at chain %s: %w", srcChainID, err)
-		}
-		if !canInitiate {
-			return fmt.Errorf("cannot initiate at chain %s: %w", srcChainID, types.ErrConflict)
-		}
-
-		// Check if the message exists in a block
-		query := types.ContainsQuery{
-			BlockNum:  msg.BlockNum,
-			LogIdx:    msg.LogIdx,
-			LogHash:   msg.Hash,
-			Timestamp: msg.Timestamp,
-		}
-		includedIn, err := h.deps.Contains(srcChainID, query)
-		if err != nil {
-			return fmt.Errorf("failed to check if message exists: %w", err)
-		}
-
-		// Check timestamp invariant
-		if msg.Timestamp > block.Timestamp {
-			return fmt.Errorf("executing message %s in %s breaks timestamp invariant", msg, block)
-		}
-
-		if msg.Timestamp < block.Timestamp {
-			// For older messages, verify cross-safe derivation
-			if err := h.deps.VerifyBlock(srcChainID, includedIn.ID()); err != nil {
-				return fmt.Errorf("msg %s included in block %s: %w", msg, includedIn, err)
+			// Check if the message can be initiated at this time
+			canInit, err := depSet.CanInitiateAt(msgChainID, msg.Timestamp)
+			if err != nil {
+				return fmt.Errorf("message %s cannot be initiated: %w", NewCrossMessage(msg, chainIndex), err)
 			}
-		} else if msg.Timestamp == block.Timestamp {
-			// For same-timestamp messages, collect hazards and verify recursively
-			if existing, ok := h.hazards[msg.Chain]; ok {
-				if existing != includedIn {
-					crossMsg := NewCrossMessage(msg, types.ChainIndex(0))
-					return fmt.Errorf("message %s depends on block %s but already depend on %s", crossMsg, includedIn, existing)
+			if !canInit {
+				return fmt.Errorf("message %s cannot be initiated: %w", NewCrossMessage(msg, chainIndex), types.ErrConflict)
+			}
+
+			// Check if the message can be executed at this time
+			canExec, err := depSet.CanExecuteAt(msgChainID, msg.Timestamp)
+			if err != nil {
+				return fmt.Errorf("message %s cannot be executed: %w", NewCrossMessage(msg, chainIndex), err)
+			}
+			if !canExec {
+				return fmt.Errorf("message %s cannot be executed: %w", NewCrossMessage(msg, chainIndex), types.ErrConflict)
+			}
+
+			// Check if the message exists in its chain
+			seal, err := h.deps.Contains(msgChainID, types.ContainsQuery{
+				BlockNum:  msg.BlockNum,
+				Timestamp: msg.Timestamp,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to check if message exists: %w", err)
+			}
+
+			// If we already have a different block for this chain, return an error
+			if existingSeal, ok := h.hazards[msg.Chain]; ok {
+				if existingSeal != seal {
+					return fmt.Errorf("message %s depends on block %s but already depend on %s",
+						NewCrossMessage(msg, chainIndex),
+						seal,
+						existingSeal)
 				}
 				continue
 			}
 
-			// Add the hazard for same-timestamp messages
-			h.hazards[msg.Chain] = includedIn
+			// Check if the block is already cross-safe/unsafe
+			// err = h.deps.VerifyBlock(msgChainID, eth.BlockID{
+			// 	Hash:   seal.Hash,
+			// 	Number: seal.Number,
+			// })
 
-			// Recursively check dependencies in the referenced block
-			if err := h.Add(srcChainID, includedIn); err != nil {
-				return err
-			}
+			// If the block is not cross-safe/unsafe, add it to hazards and process its messages
+			// if err != nil {
+			// Add the block to hazards
+			h.hazards[msg.Chain] = seal
+
+			// Add the block to the stack for processing
+			stack = append(stack, blockToProcess{
+				chainID: msgChainID,
+				block:   seal,
+			})
+			// }
 		}
 	}
 
 	return nil
 }
 
-// Dependencies returns all blocks that must be checked
+// Dependencies returns a copy of the hazard set's dependencies
 func (h *HazardSet) Dependencies() map[types.ChainIndex]types.BlockSeal {
-	// Return a copy to prevent modification
 	deps := make(map[types.ChainIndex]types.BlockSeal, len(h.hazards))
 	for k, v := range h.hazards {
 		deps[k] = v
