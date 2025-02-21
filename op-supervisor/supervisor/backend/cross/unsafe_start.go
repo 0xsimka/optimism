@@ -60,22 +60,10 @@ func (d *unsafeDeps) ChainIndexFromID(id eth.ChainID) (types.ChainIndex, error) 
 
 // OpenBlock implements HazardDeps by using the dependency set
 func (d *unsafeDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-	// For unsafe hazards, verify that the block is cross-unsafe
-	block := eth.BlockID{Number: blockNum}
-	if err := d.IsCrossUnsafe(chainID, block); err != nil {
-		return eth.BlockRef{}, 0, nil, fmt.Errorf("block %s not cross-unsafe: %w", block, err)
-	}
-
 	// Open the block to get executing messages
 	ref, logCount, execMsgs, err = d.UnsafeStartDeps.OpenBlock(chainID, blockNum)
 	if err != nil {
 		return eth.BlockRef{}, 0, nil, err
-	}
-
-	// Verify the block again with the actual block hash
-	block.Hash = ref.Hash
-	if err := d.IsCrossUnsafe(chainID, block); err != nil {
-		return eth.BlockRef{}, 0, nil, fmt.Errorf("block %s not cross-unsafe: %w", block, err)
 	}
 
 	// Check timestamp invariants for all messages
@@ -85,7 +73,5 @@ func (d *unsafeDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref eth.Bl
 		}
 	}
 
-	// If we get here, the block is verified to be cross-unsafe
-	// Return the messages but don't add to hazard set
 	return ref, logCount, execMsgs, nil
 }

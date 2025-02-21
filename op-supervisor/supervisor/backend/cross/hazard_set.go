@@ -175,25 +175,32 @@ func (h *HazardSet) Add(chainID eth.ChainID, block types.BlockSeal) error {
 		}
 
 		// Check timestamp invariant
-		if msg.Timestamp > includedIn.Timestamp {
-			return fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", msg.Timestamp, includedIn.Timestamp)
+		if msg.Timestamp > block.Timestamp {
+			return fmt.Errorf("executing message %s in %s breaks timestamp invariant", msg, block)
 		}
 
-		// If we already have a hazard for this chain, make sure it's the same one
-		if existing, ok := h.hazards[msg.Chain]; ok {
-			if existing != includedIn {
-				crossMsg := NewCrossMessage(msg, types.ChainIndex(0))
-				return fmt.Errorf("message %s depends on block %s but already depend on %s", crossMsg, includedIn, existing)
+		if msg.Timestamp < block.Timestamp {
+			// For older messages, verify cross-safe derivation
+			if err := h.deps.VerifyBlock(srcChainID, includedIn.ID()); err != nil {
+				return fmt.Errorf("msg %s included in block %s: %w", msg, includedIn, err)
 			}
-			continue
-		}
+		} else if msg.Timestamp == block.Timestamp {
+			// For same-timestamp messages, collect hazards and verify recursively
+			if existing, ok := h.hazards[msg.Chain]; ok {
+				if existing != includedIn {
+					crossMsg := NewCrossMessage(msg, types.ChainIndex(0))
+					return fmt.Errorf("message %s depends on block %s but already depend on %s", crossMsg, includedIn, existing)
+				}
+				continue
+			}
 
-		// Add the hazard
-		h.hazards[msg.Chain] = includedIn
+			// Add the hazard for same-timestamp messages
+			h.hazards[msg.Chain] = includedIn
 
-		// Recursively check dependencies in the referenced block
-		if err := h.Add(srcChainID, includedIn); err != nil {
-			return err // Don't wrap the error to avoid the "failed to check dependencies" prefix
+			// Recursively check dependencies in the referenced block
+			if err := h.Add(srcChainID, includedIn); err != nil {
+				return err
+			}
 		}
 	}
 

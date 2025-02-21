@@ -16,7 +16,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 	t.Run("empty execMsgs", func(t *testing.T) {
 		usd := &mockUnsafeStartDeps{}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		// when there are no execMsgs,
 		// no work is done, and no error is returned
 		hazards, err := CrossUnsafeHazards(usd, chainID, candidate)
@@ -31,7 +32,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -49,7 +51,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -67,7 +70,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -85,7 +89,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -103,7 +108,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -121,7 +127,8 @@ func TestCrossUnsafeHazards(t *testing.T) {
 			},
 		}
 		chainID := eth.ChainIDFromUInt64(0)
-		candidate := types.BlockSeal{}
+		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: {}}, nil
 		}
@@ -136,6 +143,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 10}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -154,6 +162,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -174,6 +183,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
@@ -202,6 +212,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
@@ -222,6 +233,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -245,6 +257,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -268,6 +281,7 @@ func TestCrossUnsafeHazards(t *testing.T) {
 		usd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		candidate := types.BlockSeal{Timestamp: 2}
+		usd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 0}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -286,17 +300,19 @@ type mockUnsafeStartDeps struct {
 	checkFn         func() (includedIn types.BlockSeal, err error)
 	isCrossUnsafeFn func() error
 	openBlockFn     func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
+	candidate       types.BlockSeal
 }
 
 func (m *mockUnsafeStartDeps) Contains(chain eth.ChainID, query types.ContainsQuery) (includedIn types.BlockSeal, err error) {
 	if m.checkFn != nil {
 		return m.checkFn()
 	}
-	// Check timestamp invariant
-	if query.Timestamp > 2 {
-		return types.BlockSeal{}, fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", query.Timestamp, 2)
+	// Check timestamp invariant - message timestamp must not be greater than candidate timestamp
+	if query.Timestamp > m.candidate.Timestamp {
+		return types.BlockSeal{}, fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", query.Timestamp, m.candidate.Timestamp)
 	}
-	return types.BlockSeal{}, nil
+	// Return a BlockSeal with the same timestamp as the message
+	return types.BlockSeal{Timestamp: query.Timestamp}, nil
 }
 
 func (m *mockUnsafeStartDeps) IsCrossUnsafe(chainID eth.ChainID, derived eth.BlockID) error {
@@ -315,13 +331,16 @@ func (m *mockUnsafeStartDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (r
 		return m.openBlockFn(chainID, blockNum)
 	}
 	// Default implementation returns block with matching timestamp to avoid invariant errors
-	// Return timestamp 2 to match the test cases
+	// Return timestamp matching the candidate timestamp
 	execMsgs = make(map[uint32]*types.ExecutingMessage)
-	execMsgs[0] = &types.ExecutingMessage{
-		Chain:     0,
-		BlockNum:  blockNum,
-		Timestamp: 2,
-		LogIdx:    0,
+	// Only add a message if we have a non-zero timestamp
+	if m.candidate.Timestamp > 0 {
+		execMsgs[0] = &types.ExecutingMessage{
+			Chain:     0,
+			BlockNum:  blockNum,
+			Timestamp: m.candidate.Timestamp,
+			LogIdx:    0,
+		}
 	}
-	return eth.BlockRef{Time: 2}, 1, execMsgs, nil
+	return eth.BlockRef{Time: m.candidate.Timestamp}, uint32(len(execMsgs)), execMsgs, nil
 }

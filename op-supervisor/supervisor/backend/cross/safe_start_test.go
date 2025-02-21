@@ -2,7 +2,6 @@ package cross
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -144,6 +143,7 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 10}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -163,6 +163,7 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -176,7 +177,7 @@ func TestCrossSafeHazards(t *testing.T) {
 	})
 	t.Run("timestamp is equal, same hazard twice", func(t *testing.T) {
 		ssd := &mockSafeStartDeps{}
-		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02})}
+		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02}), Timestamp: 2}
 		ssd.checkFn = func() (includedIn types.BlockSeal, err error) {
 			return sampleBlockSeal, nil
 		}
@@ -184,10 +185,11 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-			return eth.BlockRef{}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
+			return eth.BlockRef{Time: 2}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
 		}
 		// when there are two execMsgs, and both are equal time to the candidate,
 		// and check returns the same includedIn for both
@@ -199,8 +201,8 @@ func TestCrossSafeHazards(t *testing.T) {
 	t.Run("timestamp is equal, different hazards", func(t *testing.T) {
 		ssd := &mockSafeStartDeps{}
 		// set the check function to return a different BlockSeal for the second call
-		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02})}
-		sampleBlockSeal2 := types.BlockSeal{Number: 333, Hash: common.BytesToHash([]byte{0x22})}
+		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02}), Timestamp: 2}
+		sampleBlockSeal2 := types.BlockSeal{Number: 333, Hash: common.BytesToHash([]byte{0x22}), Timestamp: 2}
 		calls := 0
 		ssd.checkFn = func() (includedIn types.BlockSeal, err error) {
 			defer func() { calls++ }()
@@ -213,10 +215,11 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		em2 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 2}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-			return eth.BlockRef{}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
+			return eth.BlockRef{Time: 2}, 2, map[uint32]*types.ExecutingMessage{0: em1, 1: em2}, nil
 		}
 		// when there are two execMsgs, and both are equal time to the candidate,
 		// and check returns different includedIn for the two,
@@ -234,6 +237,7 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -258,6 +262,7 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -283,6 +288,7 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
@@ -296,11 +302,8 @@ func TestCrossSafeHazards(t *testing.T) {
 	})
 	t.Run("timestamp is less, DerivedToSource Number less", func(t *testing.T) {
 		ssd := &mockSafeStartDeps{}
-		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02})}
-		ssd.checkFn = func() (includedIn types.BlockSeal, err error) {
-			return sampleBlockSeal, nil
-		}
-		sampleSource := types.BlockSeal{Number: 1, Hash: common.BytesToHash([]byte{0x03})}
+		// Don't need checkFn since we want no hazards
+		sampleSource := types.BlockSeal{Number: 1, Hash: common.BytesToHash([]byte{0x03}), Timestamp: 3}
 		ssd.derivedToSrcFn = func() (source types.BlockSeal, err error) {
 			return sampleSource, nil
 		}
@@ -308,9 +311,10 @@ func TestCrossSafeHazards(t *testing.T) {
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{Number: 10}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+			return eth.BlockRef{Time: em1.Timestamp}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
 		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns a BlockSeal with a smaller Number than the inL1Source,
@@ -321,21 +325,18 @@ func TestCrossSafeHazards(t *testing.T) {
 	})
 	t.Run("timestamp is less, DerivedToSource Number equal", func(t *testing.T) {
 		ssd := &mockSafeStartDeps{}
-		sampleBlockSeal := types.BlockSeal{Number: 3, Hash: common.BytesToHash([]byte{0x02})}
-		ssd.checkFn = func() (includedIn types.BlockSeal, err error) {
-			return sampleBlockSeal, nil
-		}
-		sampleSource := types.BlockSeal{Number: 1, Hash: common.BytesToHash([]byte{0x03})}
+		// Don't need checkFn since we want no hazards
 		ssd.derivedToSrcFn = func() (source types.BlockSeal, err error) {
-			return sampleSource, nil
+			return types.BlockSeal{Number: 1, Hash: common.BytesToHash([]byte{0x03}), Timestamp: 1}, nil
 		}
 		ssd.deps = mockDependencySet{}
 		chainID := eth.ChainIDFromUInt64(0)
 		inL1Source := eth.BlockID{Number: 1}
 		candidate := types.BlockSeal{Timestamp: 2}
+		ssd.candidate = candidate
 		em1 := &types.ExecutingMessage{Chain: types.ChainIndex(0), Timestamp: 1}
 		ssd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
-			return eth.BlockRef{}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
+			return eth.BlockRef{Time: em1.Timestamp}, 1, map[uint32]*types.ExecutingMessage{0: em1}, nil
 		}
 		// when there is one execMsg, and the timestamp is less than the candidate,
 		// and DerivedToSource returns a BlockSeal with a equal to the Number of inL1Source,
@@ -351,15 +352,12 @@ type mockSafeStartDeps struct {
 	checkFn        func() (includedIn types.BlockSeal, err error)
 	derivedToSrcFn func() (source types.BlockSeal, err error)
 	openBlockFn    func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error)
+	candidate      types.BlockSeal
 }
 
 func (m *mockSafeStartDeps) Contains(chain eth.ChainID, query types.ContainsQuery) (includedIn types.BlockSeal, err error) {
 	if m.checkFn != nil {
 		return m.checkFn()
-	}
-	// Check timestamp invariant
-	if query.Timestamp > 2 {
-		return types.BlockSeal{}, fmt.Errorf("message timestamp %d breaks timestamp invariant with block timestamp %d", query.Timestamp, 2)
 	}
 	return types.BlockSeal{}, nil
 }
@@ -380,13 +378,16 @@ func (m *mockSafeStartDeps) OpenBlock(chainID eth.ChainID, blockNum uint64) (ref
 		return m.openBlockFn(chainID, blockNum)
 	}
 	// Default implementation returns block with matching timestamp to avoid invariant errors
-	// Return timestamp 2 to match the test cases
+	// Return timestamp matching the candidate timestamp
 	execMsgs = make(map[uint32]*types.ExecutingMessage)
-	execMsgs[0] = &types.ExecutingMessage{
-		Chain:     0,
-		BlockNum:  blockNum,
-		Timestamp: 2,
-		LogIdx:    0,
+	// Only add a message if we have a non-zero timestamp
+	if m.candidate.Timestamp > 0 {
+		execMsgs[0] = &types.ExecutingMessage{
+			Chain:     0,
+			BlockNum:  blockNum,
+			Timestamp: m.candidate.Timestamp,
+			LogIdx:    0,
+		}
 	}
-	return eth.BlockRef{Time: 2}, 1, execMsgs, nil
+	return eth.BlockRef{Time: m.candidate.Timestamp}, uint32(len(execMsgs)), execMsgs, nil
 }

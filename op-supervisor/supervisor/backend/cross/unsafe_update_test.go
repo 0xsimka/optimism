@@ -114,7 +114,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		// (the first one is in CrossSafeHazards)
 		usd.deps.chainIDFromIndexfn = func() (eth.ChainID, error) {
 			defer func() { count++ }()
-			if count == 1 {
+			if count < 2 {
 				return eth.ChainID{}, errors.New("some error")
 			}
 			return eth.ChainID{}, nil
@@ -122,7 +122,7 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		// when HazardUnsafeFrontierChecks returns an error,
 		// the error is returned
 		err := CrossUnsafeUpdate(logger, chainID, usd)
-		require.ErrorContains(t, err, "breaks timestamp invariant")
+		require.ErrorContains(t, err, "some error")
 	})
 	t.Run("HazardCycleChecks returns error", func(t *testing.T) {
 		logger := testlog.Logger(t, log.LevelDebug)
@@ -156,11 +156,11 @@ func TestCrossUnsafeUpdate(t *testing.T) {
 		chainIdx, err := usd.deps.ChainIndexFromID(chainID)
 		require.NoError(t, err)
 
-		crossUnsafe := types.BlockSeal{Hash: common.Hash{0x01}, Timestamp: 1}
+		crossUnsafe := types.BlockSeal{Hash: common.Hash{0x01}, Timestamp: 1, Number: 0}
 		usd.crossUnsafeFn = func(chainID eth.ChainID) (types.BlockSeal, error) {
 			return crossUnsafe, nil
 		}
-		bl := eth.BlockRef{ParentHash: common.Hash{0x01}, Time: 1}
+		bl := eth.BlockRef{ParentHash: common.Hash{0x01}, Time: 1, Number: 1}
 		em1 := &types.ExecutingMessage{Chain: chainIdx, BlockNum: 1, Timestamp: 1}
 		usd.openBlockFn = func(chainID eth.ChainID, blockNum uint64) (ref eth.BlockRef, logCount uint32, execMsgs map[uint32]*types.ExecutingMessage, err error) {
 			// include one executing message to ensure one hazard is returned
